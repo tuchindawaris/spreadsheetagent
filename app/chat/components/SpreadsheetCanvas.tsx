@@ -37,7 +37,10 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
         maxRows: 100,
         rowHeaders: true,
         colHeaders: false,
-        licenseKey: 'non-commercial-and-evaluation'
+        licenseKey: 'non-commercial-and-evaluation',
+        afterRender: () => {
+          console.log(`Handsontable rendered for ${table.name}`);
+        }
       });
       
       hotInstances.current[table.name] = hot;
@@ -54,34 +57,56 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
     // Handle highlighting
     if (!highlightRange) return;
     
-    const hot = hotInstances.current[highlightRange.sheetId];
-    if (!hot) return;
+    console.log('Highlighting range:', highlightRange);
     
-    // Parse range (e.g., "A1:E10")
-    const match = highlightRange.range.match(/([A-Z])(\d+):([A-Z])(\d+)/);
-    if (!match) return;
+    // Switch to the highlighted sheet first
+    setActiveTab(highlightRange.sheetId);
     
-    const startCol = match[1].charCodeAt(0) - 65;
-    const startRow = parseInt(match[2]) - 1;
-    const endCol = match[3].charCodeAt(0) - 65;
-    const endRow = parseInt(match[4]) - 1;
-    
-    // Apply highlight class
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        const cell = hot.getCell(row, col);
-        if (cell) {
-          cell.classList.add('bg-yellow-200');
-          // Remove highlight after 800ms
-          setTimeout(() => {
-            cell.classList.remove('bg-yellow-200');
-          }, 800);
+    // Wait for tab switch to complete
+    setTimeout(() => {
+      const hot = hotInstances.current[highlightRange.sheetId];
+      if (!hot) {
+        console.error('No Handsontable instance for sheet:', highlightRange.sheetId);
+        return;
+      }
+      
+      // Parse range (e.g., "A1:E10")
+      const match = highlightRange.range.match(/([A-Z])(\d+):([A-Z])(\d+)/);
+      if (!match) {
+        console.error('Invalid range format:', highlightRange.range);
+        return;
+      }
+      
+      const startCol = match[1].charCodeAt(0) - 65;
+      const startRow = parseInt(match[2]) - 1;
+      const endCol = match[3].charCodeAt(0) - 65;
+      const endRow = parseInt(match[4]) - 1;
+      
+      console.log('Highlighting cells:', { startRow, startCol, endRow, endCol });
+      
+      // Use Handsontable's selection API
+      hot.selectCell(startRow, startCol, endRow, endCol);
+      
+      // Also add visual highlight with custom class
+      const selection = hot.getSelected();
+      if (selection) {
+        for (let row = startRow; row <= endRow; row++) {
+          for (let col = startCol; col <= endCol; col++) {
+            const td = hot.getCell(row, col);
+            if (td) {
+              td.classList.add('highlight-cell');
+              // Remove highlight after animation
+              setTimeout(() => {
+                td.classList.remove('highlight-cell');
+              }, 2000);
+            }
+          }
         }
       }
-    }
-    
-    // Switch to the highlighted sheet
-    setActiveTab(highlightRange.sheetId);
+      
+      // Scroll to the selection
+      hot.scrollViewportTo(startRow, startCol);
+    }, 100);
   }, [highlightRange]);
   
   return (
@@ -104,6 +129,7 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
           </TabsContent>
         ))}
       </Tabs>
+
     </div>
   );
 }

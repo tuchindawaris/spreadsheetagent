@@ -10,6 +10,7 @@ import ThoughtConsole from './components/ThoughtConsole';
 export default function ChatPage() {
   const [sheetModel, setSheetModel] = useState<SheetModel | null>(null);
   const [highlightRange, setHighlightRange] = useState<{ sheetId: string; range: string } | null>(null);
+  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const router = useRouter();
   
   useEffect(() => {
@@ -40,10 +41,11 @@ export default function ChatPage() {
           <ChatPanel 
             sheetModel={sheetModel}
             onHighlight={setHighlightRange}
+            sessionId={sessionId}
           />
         </div>
       </div>
-      <ThoughtConsole />
+      <ThoughtConsole sessionId={sessionId} />
     </div>
   );
 }

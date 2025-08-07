@@ -37,7 +37,13 @@
 }
 
 /* Handsontable highlight animation */
-.bg-yellow-200 {
-  background-color: rgb(254 240 138) !important;
-  transition: background-color 0.3s ease;
+.highlight-cell {
+  background-color: #fef3c7 !important;
+  animation: highlightPulse 2s ease-in-out;
+}
+
+@keyframes highlightPulse {
+  0% { background-color: #fef3c7; }
+  50% { background-color: #fde68a; }
+  100% { background-color: #fef3c7; }
 }

@@ -47,7 +47,7 @@ export async function runAgentPipeline(context: AgentContext) {
       console.log(`Stage 4: Drafting code (attempt ${retryCount + 1})...`);
       eventBus.publish(sessionId, { 
         type: 'thought', 
-        message: retryCount === 0 ? 'Writing analysis code...' : 'Refining analysis...' 
+        message: retryCount === 0 ? 'Writing JavaScript analysis code...' : 'Refining analysis code...' 
       });
       code = await draftCode(frame, region, context);
       
@@ -55,7 +55,7 @@ export async function runAgentPipeline(context: AgentContext) {
       console.log('Stage 5: Executing code...');
       eventBus.publish(sessionId, { 
         type: 'thought', 
-        message: 'Running analysis...' 
+        message: 'Running data analysis...' 
       });
       execResult = await executeCode(code, region);
       console.log('Execution result:', { ok: execResult.ok, error: execResult.error });
@@ -64,7 +64,7 @@ export async function runAgentPipeline(context: AgentContext) {
       if (!execResult.ok) {
         eventBus.publish(sessionId, { 
           type: 'thought', 
-          message: `Error: ${execResult.error}. Retrying...` 
+          message: `JavaScript error: ${execResult.error}. Retrying...` 
         });
       }
       

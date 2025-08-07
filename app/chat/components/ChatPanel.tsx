@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 interface Props {
   sheetModel: SheetModel;
   onHighlight: (range: { sheetId: string; range: string } | null) => void;
+  sessionId: string;
 }
 
 interface Message {
@@ -19,50 +20,65 @@ interface Message {
   data?: AnswerPayload;
 }
 
-export default function ChatPanel({ sheetModel, onHighlight }: Props) {
+export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => {
-    const id = Math.random().toString(36).substring(7);
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('currentSessionId', id);
-    }
-    return id;
-  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   
   useEffect(() => {
+    console.log('ChatPanel: Connecting to SSE stream with session:', sessionId);
+    
     // Connect to SSE stream
     const eventSource = new EventSource(`/api/stream?session=${sessionId}`);
+    eventSourceRef.current = eventSource;
+    
+    eventSource.onopen = () => {
+      console.log('ChatPanel: SSE connection opened');
+    };
     
     eventSource.onmessage = (event) => {
-      const data: AgentEvent = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'highlight':
-          onHighlight({ sheetId: data.sheetId, range: data.range });
-          break;
-        case 'thought':
-          // Thoughts are handled by ThoughtConsole
-          break;
-        case 'answer':
-          setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: data.content.markdown,
-            data: data.content
-          }]);
-          setLoading(false);
-          break;
+      try {
+        const data: AgentEvent = JSON.parse(event.data);
+        console.log('ChatPanel: Received event:', data.type);
+        
+        switch (data.type) {
+          case 'connected':
+            console.log('ChatPanel: SSE connected successfully');
+            break;
+          case 'highlight':
+            onHighlight({ sheetId: data.sheetId, range: data.range });
+            break;
+          case 'thought':
+            // Thoughts are handled by ThoughtConsole
+            break;
+          case 'answer':
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: data.content.markdown,
+              data: data.content
+            }]);
+            setLoading(false);
+            break;
+        }
+      } catch (error) {
+        console.error('ChatPanel: Error parsing SSE data:', error);
       }
     };
     
-    eventSource.onerror = () => {
-      toast.error('Connection lost');
-      setLoading(false);
+    eventSource.onerror = (error) => {
+      console.error('ChatPanel: SSE error:', error);
+      if (eventSource.readyState === EventSource.CLOSED) {
+        toast.error('Connection lost');
+        setLoading(false);
+      }
     };
     
-    return () => eventSource.close();
+    return () => {
+      console.log('ChatPanel: Cleaning up SSE connection');
+      eventSource.close();
+    };
   }, [sessionId, onHighlight]);
   
   useEffect(() => {
@@ -90,8 +106,11 @@ export default function ChatPanel({ sheetModel, onHighlight }: Props) {
         throw new Error('Failed to start analysis');
       }
     } catch (error) {
+      console.error('ChatPanel: Error submitting request:', error);
       toast.error('Failed to process request');
       setLoading(false);
+      // Remove the user message if the request failed
+      setMessages(prev => prev.slice(0, -1));
     }
   };
   

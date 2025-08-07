@@ -17,55 +17,99 @@ export async function executeCode(
   console.log('First 3 rows of data:', region.table.rows.slice(0, 3));
   console.log('===================');
   
-  // MVP: Simple JavaScript execution instead of Python
-  // In production, use a proper sandboxed Python environment
-  
   try {
-    // Convert table data to a format we can work with
-    const data = region.table.rows;
-    
-    // Create a safe execution context
+    // Create execution context with data and utilities
     const sandbox = {
-      data,
+      data: region.table.rows,
       result: null,
       console: {
         log: (...args: any[]) => {
-          sandbox.stdout += args.map(a => String(a)).join(' ') + '\n';
+          sandbox.stdout += args.map(a => {
+            if (typeof a === 'object') {
+              // For arrays, show a preview if it's long
+              if (Array.isArray(a) && a.length > 10) {
+                const preview = a.slice(0, 5);
+                return `[${preview.map(item => JSON.stringify(item)).join(', ')}, ... (${a.length} total items)]`;
+              }
+              return JSON.stringify(a, null, 2);
+            }
+            return String(a);
+          }).join(' ') + '\n';
         }
       },
-      stdout: ''
+      stdout: '',
+      // Add lodash utilities
+      _: {
+        groupBy: (arr: any[], key: string) => {
+          return arr.reduce((groups, item) => {
+            const group = item[key];
+            if (!groups[group]) groups[group] = [];
+            groups[group].push(item);
+            return groups;
+          }, {});
+        },
+        sumBy: (arr: any[], key: string) => {
+          return arr.reduce((sum, item) => sum + (Number(item[key]) || 0), 0);
+        },
+        sortBy: (arr: any[], key: string) => {
+          return [...arr].sort((a, b) => {
+            if (a[key] < b[key]) return -1;
+            if (a[key] > b[key]) return 1;
+            return 0;
+          });
+        },
+        uniqBy: (arr: any[], key: string) => {
+          const seen = new Set();
+          return arr.filter(item => {
+            const val = item[key];
+            if (seen.has(val)) return false;
+            seen.add(val);
+            return true;
+          });
+        },
+        meanBy: (arr: any[], key: string) => {
+          const sum = arr.reduce((s, item) => s + (Number(item[key]) || 0), 0);
+          return arr.length > 0 ? sum / arr.length : 0;
+        },
+        maxBy: (arr: any[], key: string) => {
+          return arr.reduce((max, item) => 
+            (item[key] > max[key] ? item : max), arr[0] || null);
+        },
+        minBy: (arr: any[], key: string) => {
+          return arr.reduce((min, item) => 
+            (item[key] < min[key] ? item : min), arr[0] || null);
+        }
+      }
     };
     
-    // Transform Python-like code to JavaScript (very basic)
-    console.log('=== TRANSFORMING PYTHON TO JS ===');
-    let jsCode = code
-      .replace(/import pandas as pd/g, '// pandas import')
-      .replace(/import numpy as np/g, '// numpy import')
-      .replace(/df\s*=\s*pd\.DataFrame/g, 'const df = ')
-      .replace(/df\[['"](\w+)['"]\]/g, 'data.map(row => row["$1"])')
-      .replace(/df\.(\w+)/g, 'data.$1')
-      .replace(/print\(/g, 'console.log(')
-      .replace(/len\(/g, '(')
-      .replace(/\)\.length/g, ').length')
-      .replace(/\.tolist\(\)/g, '')
-      .replace(/\.values/g, '');
+    // Execute the code in a controlled environment
+    const execFunc = new Function(
+      'data', 'console', 'result', '_',
+      code + '\nreturn result;'
+    );
     
-    console.log('Transformed code:', jsCode);
-    console.log('===================');
-    
-    // Execute in a try-catch
-    const execFunc = new Function('data', 'console', 'result', jsCode + '\nreturn result;');
-    const result = execFunc(sandbox.data, sandbox.console, sandbox.result);
+    let executionResult = sandbox.result;
+    try {
+      executionResult = execFunc(
+        sandbox.data, 
+        sandbox.console, 
+        sandbox.result,
+        sandbox._
+      );
+    } catch (funcError) {
+      // If the function itself throws, re-throw with clearer message
+      throw new Error(`Code execution failed: ${funcError instanceof Error ? funcError.message : 'Unknown error'}`);
+    }
     
     console.log('=== EXECUTION RESULT ===');
     console.log('Stdout:', sandbox.stdout);
-    console.log('Result:', result);
+    console.log('Result:', executionResult);
     console.log('===================');
     
     return {
       ok: true,
       stdout: sandbox.stdout || 'Code executed successfully',
-      result: result || sandbox.data
+      result: executionResult !== null ? executionResult : sandbox.result
     };
   } catch (error) {
     console.error('=== EXECUTION ERROR ===');

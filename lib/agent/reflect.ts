@@ -23,7 +23,7 @@ export async function reflect(
     return 'retry'; // Always retry on error
   }
   
-  const systemPrompt = `You are evaluating code execution results.
+  const systemPrompt = `You are evaluating JavaScript code execution results for spreadsheet data analysis.
 Given the user's intent and the execution result, determine if the result is satisfactory.
 
 Respond with either "done" if the result answers the user's question, or "retry" if it needs improvement.`;

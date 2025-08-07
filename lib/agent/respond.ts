@@ -21,15 +21,16 @@ export async function respond(
     };
   }
   
-  const systemPrompt = `You are formatting analysis results for the user.
-Given the execution results, create a clear, concise markdown response.
+  const systemPrompt = `You are formatting JavaScript data analysis results for the user.
+Given the execution results from JavaScript/SheetJS analysis, create a clear, concise markdown response.
 
 Guidelines:
 - Be direct and helpful
-- Use markdown formatting
-- Include key insights
-- Format numbers nicely
-- If the result is tabular data, mention it will be displayed below`;
+- Use markdown formatting for readability
+- Include key insights from the data
+- Format numbers nicely (e.g., use commas for thousands)
+- If the result is tabular data, mention it will be displayed in a table below
+- Highlight important findings with **bold** text`;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',

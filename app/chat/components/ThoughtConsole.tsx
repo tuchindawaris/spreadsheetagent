@@ -1,39 +1,61 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChevronUp, ChevronDown, Brain } from 'lucide-react';
 import { AgentEvent } from '@/lib/types';
 
-export default function ThoughtConsole() {
+interface Props {
+  sessionId: string;
+}
+
+export default function ThoughtConsole({ sessionId }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [thoughts, setThoughts] = useState<string[]>([]);
-  const [sessionId] = useState(() => {
-    // Get sessionId from sessionStorage to sync with ChatPanel
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('currentSessionId') || Math.random().toString(36).substring(7);
-    }
-    return '';
-  });
+  const eventSourceRef = useRef<EventSource | null>(null);
   
   useEffect(() => {
-    if (!sessionId) return;
-    
-    // Store sessionId for ChatPanel to use
-    sessionStorage.setItem('currentSessionId', sessionId);
+    console.log('ThoughtConsole: Connecting to SSE stream with session:', sessionId);
     
     const eventSource = new EventSource(`/api/stream?session=${sessionId}`);
+    eventSourceRef.current = eventSource;
+    
+    eventSource.onopen = () => {
+      console.log('ThoughtConsole: SSE connection opened');
+    };
     
     eventSource.onmessage = (event) => {
-      const data: AgentEvent = JSON.parse(event.data);
-      
-      if (data.type === 'thought') {
-        setThoughts(prev => [...prev, data.message]);
+      try {
+        const data: AgentEvent = JSON.parse(event.data);
+        console.log('ThoughtConsole: Received event:', data.type);
+        
+        if (data.type === 'thought') {
+          setThoughts(prev => [...prev, data.message]);
+          // Auto-open console when first thought arrives
+          if (thoughts.length === 0) {
+            setIsOpen(true);
+          }
+        } else if (data.type === 'answer') {
+          // Clear thoughts when answer is received
+          setTimeout(() => {
+            setThoughts([]);
+            setIsOpen(false);
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('ThoughtConsole: Error parsing SSE data:', error);
       }
     };
     
-    return () => eventSource.close();
+    eventSource.onerror = (error) => {
+      console.error('ThoughtConsole: SSE error:', error);
+    };
+    
+    return () => {
+      console.log('ThoughtConsole: Cleaning up SSE connection');
+      eventSource.close();
+    };
   }, [sessionId]);
   
   return (

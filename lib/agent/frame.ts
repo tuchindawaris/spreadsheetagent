@@ -19,16 +19,21 @@ export async function frameTask(
     `Table "${table.name}": ${table.columns.map(c => c.name).join(', ')} (${table.rows.length} rows)`
   ).join('\n');
   
-  const systemPrompt = `You are analyzing spreadsheet data. Given a user query and sheet structure, 
-identify the intent, which columns are needed, and provide a brief summary.
+  const systemPrompt = `You are analyzing spreadsheet data to understand user requests. 
+Given a user query and sheet structure, identify the intent, which columns are needed, and provide a brief summary.
+
+Important: Carefully match user intent to column names. For example:
+- If user asks for "payment amounts" and there's an "Amount" column and a "Payment" column, they likely want "Amount"
+- If user asks for "customer names" and there's a "Customer" or "Client" column, use that
+- Consider the data type in columns when matching (numbers for amounts, strings for names)
 
 Available sheets:
 ${sheetSummary}
 
 Return a JSON object with:
-- intent: what the user wants to do
-- neededColumns: array of column names needed
-- summary: brief description of the task`;
+- intent: what the user wants to do (be specific about the analysis type)
+- neededColumns: array of column names needed for the analysis
+- summary: brief description of the task that will guide JavaScript code generation`;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
