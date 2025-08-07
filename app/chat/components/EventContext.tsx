@@ -14,6 +14,9 @@ export function EventProvider({ children, sessionId }: { children: ReactNode; se
   const [connected, setConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const subscribersRef = useRef<Set<(event: AgentEvent) => void>>(new Set());
+  const hasReceivedFirstEvent = useRef(false);
+  
+  console.log('EventProvider: Render', { sessionId, connected });
   
   useEffect(() => {
     console.log('EventProvider: Connecting to SSE stream with session:', sessionId);
@@ -23,17 +26,25 @@ export function EventProvider({ children, sessionId }: { children: ReactNode; se
     
     eventSource.onopen = () => {
       console.log('EventProvider: SSE connection opened');
-      setConnected(true);
+      // Don't set connected yet - wait for first event to confirm subscription
     };
     
     eventSource.onmessage = (event) => {
       try {
         const data: AgentEvent = JSON.parse(event.data);
-        console.log('EventProvider: Broadcasting event:', data.type, 'to', subscribersRef.current.size, 'subscribers');
+        console.log('EventProvider: Received SSE event:', data.type, 'Subscribers:', subscribersRef.current.size);
+        
+        // Set connected true only after receiving first event (confirms subscription is active)
+        if (!hasReceivedFirstEvent.current) {
+          hasReceivedFirstEvent.current = true;
+          setConnected(true);
+          console.log('EventProvider: First event received, marking as connected');
+        }
         
         // Broadcast to all local subscribers
         subscribersRef.current.forEach(callback => {
           try {
+            console.log('EventProvider: Calling subscriber callback for event:', data.type);
             callback(data);
           } catch (error) {
             console.error('EventProvider: Error in subscriber callback:', error);
@@ -47,22 +58,24 @@ export function EventProvider({ children, sessionId }: { children: ReactNode; se
     eventSource.onerror = (error) => {
       console.error('EventProvider: SSE error:', error);
       setConnected(false);
+      hasReceivedFirstEvent.current = false;
     };
     
     return () => {
       console.log('EventProvider: Cleaning up SSE connection');
       eventSource.close();
       setConnected(false);
+      hasReceivedFirstEvent.current = false;
     };
   }, [sessionId]);
   
   const subscribe = (callback: (event: AgentEvent) => void) => {
     subscribersRef.current.add(callback);
-    console.log('EventProvider: Added subscriber, total:', subscribersRef.current.size);
+    console.log('EventProvider: Added local subscriber, total:', subscribersRef.current.size);
     
     return () => {
       subscribersRef.current.delete(callback);
-      console.log('EventProvider: Removed subscriber, remaining:', subscribersRef.current.size);
+      console.log('EventProvider: Removed local subscriber, remaining:', subscribersRef.current.size);
     };
   };
   

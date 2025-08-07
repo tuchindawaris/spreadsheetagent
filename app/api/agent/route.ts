@@ -3,30 +3,6 @@ import { runAgentPipeline } from '@/lib/agent/orchestrator';
 import { AgentContext } from '@/lib/types';
 import { eventBus } from '@/lib/bus';
 
-async function waitForSubscribers(sessionId: string, maxWaitTime: number = 5000): Promise<boolean> {
-  const startTime = Date.now();
-  const pollInterval = 100; // Check every 100ms
-  
-  console.log(`Waiting for subscribers to connect for session: ${sessionId}`);
-  
-  while (Date.now() - startTime < maxWaitTime) {
-    const subscriberCount = eventBus.getSubscriberCount(sessionId);
-    console.log(`[${Date.now() - startTime}ms] Subscriber count: ${subscriberCount}`);
-    
-    if (subscriberCount > 0) {
-      console.log(`✅ Subscribers connected! Count: ${subscriberCount}`);
-      // Give a tiny bit more time for all subscribers to stabilize
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return true;
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-  
-  console.log(`❌ Timeout waiting for subscribers after ${maxWaitTime}ms`);
-  return false;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -58,24 +34,17 @@ export async function POST(request: NextRequest) {
       gptCallCount: 0
     };
     
-    // Start async process to wait for subscribers then run pipeline
+    // Start the pipeline immediately
+    // The client won't send a request unless it's connected
     (async () => {
       try {
-        // Wait for subscribers to connect (up to 5 seconds)
-        const hasSubscribers = await waitForSubscribers(sessionId, 5000);
+        console.log('Starting agent pipeline immediately for session:', sessionId);
         
-        if (!hasSubscribers) {
-          console.error('No subscribers connected, but proceeding anyway...');
-          // You could emit an error event here instead
-          eventBus.publish(sessionId, {
-            type: 'thought',
-            message: '⚠️ Connection issue detected, but proceeding with analysis...'
-          });
-        }
-        
-        // Final subscriber count check
-        const finalCount = eventBus.getSubscriberCount(sessionId);
-        console.log(`Starting pipeline with ${finalCount} subscribers`);
+        // Send initial message to confirm processing started
+        eventBus.publish(sessionId, {
+          type: 'thought',
+          message: '🚀 Starting analysis...'
+        });
         
         // Run the pipeline
         await runAgentPipeline(context);

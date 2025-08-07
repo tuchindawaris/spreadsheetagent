@@ -28,8 +28,10 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { subscribe, connected } = useEvents();
   
+  console.log('ChatPanel: Render', { connected, sessionId });
+  
   useEffect(() => {
-    console.log('ChatPanel: Setting up event subscription');
+    console.log('ChatPanel: Setting up event subscription for session:', sessionId);
     
     const unsubscribe = subscribe((event: AgentEvent) => {
       console.log('ChatPanel: Received event:', event.type);
@@ -49,14 +51,21 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
       }
     });
     
-    return unsubscribe;
-  }, [subscribe, onHighlight]);
+    console.log('ChatPanel: Subscription created');
+    
+    return () => {
+      console.log('ChatPanel: Cleaning up subscription');
+      unsubscribe();
+    };
+  }, [subscribe, onHighlight, sessionId]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
   const handleSubmit = async () => {
+    console.log('ChatPanel: handleSubmit', { connected, inputLength: input.length, loading });
+    
     if (!input.trim() || loading || !connected) return;
     
     const prompt = input.trim();
@@ -67,6 +76,8 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
     setMessages(prev => [...prev, { role: 'user', content: prompt }]);
     
     try {
+      console.log('ChatPanel: Sending request to /api/agent', { prompt, sessionId });
+      
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,6 +87,8 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
       if (!response.ok) {
         throw new Error('Failed to start analysis');
       }
+      
+      console.log('ChatPanel: Request sent successfully');
     } catch (error) {
       console.error('ChatPanel: Error submitting request:', error);
       toast.error('Failed to process request');
@@ -117,8 +130,11 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
       </div>
       
       {!connected && (
-        <div className="mb-2 text-sm text-amber-600">
-          Connecting to server...
+        <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-600">
+          <div className="flex items-center gap-2">
+            <div className="animate-pulse">●</div>
+            Establishing secure connection...
+          </div>
         </div>
       )}
       

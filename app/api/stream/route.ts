@@ -22,10 +22,7 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(data));
       };
       
-      // Send connected event immediately
-      send(`data: {"type":"connected"}\n\n`);
-      
-      // Subscribe to events
+      // Subscribe to events FIRST
       const unsubscribe = eventBus.subscribe(sessionId, (event) => {
         console.log('Sending SSE event:', { sessionId, type: event.type });
         const data = `data: ${JSON.stringify(event)}\n\n`;
@@ -35,14 +32,19 @@ export async function GET(request: NextRequest) {
       // Log subscriber count after subscribing
       console.log(`SSE subscriber added. Total subscribers for session ${sessionId}: ${eventBus.getSubscriberCount(sessionId)}`);
       
-      // Send a test event to verify connection
+      // Send connected event AFTER subscription is registered
+      setTimeout(() => {
+        send(`data: {"type":"connected"}\n\n`);
+      }, 10);
+      
+      // Send a test event to verify connection after a bit more time
       setTimeout(() => {
         console.log(`Sending test event for session ${sessionId}`);
         eventBus.publish(sessionId, {
           type: 'thought',
           message: '✅ Connection established successfully'
         });
-      }, 100);
+      }, 50);
       
       // Keep connection alive with periodic pings
       const pingInterval = setInterval(() => {
