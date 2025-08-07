@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { SheetModel, AgentEvent, AnswerPayload } from '@/lib/types';
 import { Send } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useEvents } from './EventContext';
 
 interface Props {
   sheetModel: SheetModel;
@@ -25,68 +26,38 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const { subscribe, connected } = useEvents();
   
   useEffect(() => {
-    console.log('ChatPanel: Connecting to SSE stream with session:', sessionId);
+    console.log('ChatPanel: Setting up event subscription');
     
-    // Connect to SSE stream
-    const eventSource = new EventSource(`/api/stream?session=${sessionId}`);
-    eventSourceRef.current = eventSource;
-    
-    eventSource.onopen = () => {
-      console.log('ChatPanel: SSE connection opened');
-    };
-    
-    eventSource.onmessage = (event) => {
-      try {
-        const data: AgentEvent = JSON.parse(event.data);
-        console.log('ChatPanel: Received event:', data.type);
-        
-        switch (data.type) {
-          case 'connected':
-            console.log('ChatPanel: SSE connected successfully');
-            break;
-          case 'highlight':
-            onHighlight({ sheetId: data.sheetId, range: data.range });
-            break;
-          case 'thought':
-            // Thoughts are handled by ThoughtConsole
-            break;
-          case 'answer':
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: data.content.markdown,
-              data: data.content
-            }]);
-            setLoading(false);
-            break;
-        }
-      } catch (error) {
-        console.error('ChatPanel: Error parsing SSE data:', error);
+    const unsubscribe = subscribe((event: AgentEvent) => {
+      console.log('ChatPanel: Received event:', event.type);
+      
+      switch (event.type) {
+        case 'highlight':
+          onHighlight({ sheetId: event.sheetId, range: event.range });
+          break;
+        case 'answer':
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: event.content.markdown,
+            data: event.content
+          }]);
+          setLoading(false);
+          break;
       }
-    };
+    });
     
-    eventSource.onerror = (error) => {
-      console.error('ChatPanel: SSE error:', error);
-      if (eventSource.readyState === EventSource.CLOSED) {
-        toast.error('Connection lost');
-        setLoading(false);
-      }
-    };
-    
-    return () => {
-      console.log('ChatPanel: Cleaning up SSE connection');
-      eventSource.close();
-    };
-  }, [sessionId, onHighlight]);
+    return unsubscribe;
+  }, [subscribe, onHighlight]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
   const handleSubmit = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !connected) return;
     
     const prompt = input.trim();
     setInput('');
@@ -145,6 +116,12 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
         <div ref={messagesEndRef} />
       </div>
       
+      {!connected && (
+        <div className="mb-2 text-sm text-amber-600">
+          Connecting to server...
+        </div>
+      )}
+      
       <div className="flex gap-2">
         <Textarea
           value={input}
@@ -155,14 +132,16 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
               handleSubmit();
             }
           }}
-          placeholder="Ask about your data..."
+          placeholder={connected ? "Ask about your data..." : "Waiting for connection..."}
           className="resize-none"
           rows={3}
+          disabled={!connected}
         />
         <Button 
           onClick={handleSubmit} 
-          disabled={loading || !input.trim()}
+          disabled={loading || !input.trim() || !connected}
           size="icon"
+          title={!connected ? "Waiting for connection..." : "Send message"}
         >
           <Send className="h-4 w-4" />
         </Button>

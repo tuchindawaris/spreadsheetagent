@@ -6,6 +6,8 @@ import { SheetModel } from '@/lib/types';
 import SpreadsheetCanvas from './components/SpreadsheetCanvas';
 import ChatPanel from './components/ChatPanel';
 import ThoughtConsole from './components/ThoughtConsole';
+import ConnectionDebugger from './components/ConnectionDebugger';
+import { EventProvider } from './components/EventContext';
 
 export default function ChatPage() {
   const [sheetModel, setSheetModel] = useState<SheetModel | null>(null);
@@ -29,23 +31,26 @@ export default function ChatPage() {
   }
   
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex-1 flex">
-        <div className="flex-1 p-4">
-          <SpreadsheetCanvas 
-            sheetModel={sheetModel} 
-            highlightRange={highlightRange}
-          />
+    <EventProvider sessionId={sessionId}>
+      <div className="h-screen flex flex-col">
+        <ConnectionDebugger sessionId={sessionId} />
+        <div className="flex-1 flex">
+          <div className="flex-1 p-4">
+            <SpreadsheetCanvas 
+              sheetModel={sheetModel} 
+              highlightRange={highlightRange}
+            />
+          </div>
+          <div className="w-96 border-l">
+            <ChatPanel 
+              sheetModel={sheetModel}
+              onHighlight={setHighlightRange}
+              sessionId={sessionId}
+            />
+          </div>
         </div>
-        <div className="w-96 border-l">
-          <ChatPanel 
-            sheetModel={sheetModel}
-            onHighlight={setHighlightRange}
-            sessionId={sessionId}
-          />
-        </div>
+        <ThoughtConsole sessionId={sessionId} />
       </div>
-      <ThoughtConsole sessionId={sessionId} />
-    </div>
+    </EventProvider>
   );
 }

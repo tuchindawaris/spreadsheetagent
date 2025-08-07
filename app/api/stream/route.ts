@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(data));
       };
       
+      // Send connected event immediately
       send(`data: {"type":"connected"}\n\n`);
       
       // Subscribe to events
@@ -31,6 +32,18 @@ export async function GET(request: NextRequest) {
         send(data);
       });
       
+      // Log subscriber count after subscribing
+      console.log(`SSE subscriber added. Total subscribers for session ${sessionId}: ${eventBus.getSubscriberCount(sessionId)}`);
+      
+      // Send a test event to verify connection
+      setTimeout(() => {
+        console.log(`Sending test event for session ${sessionId}`);
+        eventBus.publish(sessionId, {
+          type: 'thought',
+          message: '✅ Connection established successfully'
+        });
+      }, 100);
+      
       // Keep connection alive with periodic pings
       const pingInterval = setInterval(() => {
         send(`:ping\n\n`);
@@ -39,6 +52,7 @@ export async function GET(request: NextRequest) {
       // Clean up on close
       request.signal.addEventListener('abort', () => {
         console.log('SSE connection closed for session:', sessionId);
+        console.log(`Subscribers before cleanup: ${eventBus.getSubscriberCount(sessionId)}`);
         clearInterval(pingInterval);
         unsubscribe();
         eventBus.clear(sessionId);

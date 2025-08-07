@@ -11,9 +11,13 @@ export async function runAgentPipeline(context: AgentContext) {
   const { sessionId } = context;
   console.log('Starting agent pipeline for session:', sessionId);
   
+  // Log subscriber count at start
+  console.log(`Pipeline starting with ${eventBus.getSubscriberCount(sessionId)} subscribers`);
+  
   try {
     // Stage 1: Frame the task
     console.log('Stage 1: Framing task...');
+    console.log(`Publishing thought event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'thought', 
       message: 'Understanding your request...' 
@@ -23,6 +27,7 @@ export async function runAgentPipeline(context: AgentContext) {
     
     // Stage 2: Select region
     console.log('Stage 2: Selecting region...');
+    console.log(`Publishing thought event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'thought', 
       message: `Looking for data in columns: ${frame.neededColumns.join(', ')}` 
@@ -32,6 +37,7 @@ export async function runAgentPipeline(context: AgentContext) {
     
     // Stage 3: Highlight cells
     console.log('Stage 3: Highlighting cells...');
+    console.log(`Publishing highlight event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'highlight', 
       sheetId: region.sheetId, 
@@ -45,6 +51,7 @@ export async function runAgentPipeline(context: AgentContext) {
     do {
       // Stage 4: Draft code
       console.log(`Stage 4: Drafting code (attempt ${retryCount + 1})...`);
+      console.log(`Publishing thought event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
       eventBus.publish(sessionId, { 
         type: 'thought', 
         message: retryCount === 0 ? 'Writing JavaScript analysis code...' : 'Refining analysis code...' 
@@ -53,6 +60,7 @@ export async function runAgentPipeline(context: AgentContext) {
       
       // Stage 5: Execute
       console.log('Stage 5: Executing code...');
+      console.log(`Publishing thought event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
       eventBus.publish(sessionId, { 
         type: 'thought', 
         message: 'Running data analysis...' 
@@ -62,6 +70,7 @@ export async function runAgentPipeline(context: AgentContext) {
       
       // Stage 6: Reflect
       if (!execResult.ok) {
+        console.log(`Publishing error thought (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
         eventBus.publish(sessionId, { 
           type: 'thought', 
           message: `JavaScript error: ${execResult.error}. Retrying...` 
@@ -80,6 +89,7 @@ export async function runAgentPipeline(context: AgentContext) {
     
     // Stage 7: Respond
     console.log('Stage 7: Generating response...');
+    console.log(`Publishing thought event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'thought', 
       message: 'Formatting results...' 
@@ -88,15 +98,18 @@ export async function runAgentPipeline(context: AgentContext) {
     console.log('Answer generated:', { hasMarkdown: !!answer.markdown, hasTable: !!answer.tableJson });
     
     // Send final answer
+    console.log(`Publishing answer event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'answer', 
       content: answer 
     });
     
     console.log('Agent pipeline completed successfully');
+    console.log(`Final subscriber count: ${eventBus.getSubscriberCount(sessionId)}`);
     
   } catch (error) {
     console.error('Agent pipeline error:', error);
+    console.log(`Publishing error events (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'thought', 
       message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` 

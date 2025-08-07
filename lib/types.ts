@@ -25,6 +25,7 @@ export interface Frame {
 }
 
 export type AgentEvent =
+  | { type: 'connected' }
   | { type: 'highlight'; sheetId: string; range: string }
   | { type: 'thought'; message: string }
   | { type: 'answer'; content: AnswerPayload };
