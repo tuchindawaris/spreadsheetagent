@@ -44,3 +44,31 @@ export interface AgentContext {
   maxGptCalls: number;
   gptCallCount: number;
 }
+
+// New types for smart retry logic
+export interface RetryContext {
+  previousAttempts: {
+    code: string;
+    error?: string;
+    result?: any;
+    stdout: string;
+  }[];
+  failureReason: string; // "all_nulls", "all_whitespace", "wrong_column", "type_mismatch", etc.
+  gptFeedback?: string; // Why GPT thought it failed
+}
+
+export type FailureReason = 
+  | 'execution_error'
+  | 'all_nulls'
+  | 'all_whitespace'
+  | 'empty_result'
+  | 'type_mismatch'
+  | 'no_variance'
+  | 'irrelevant_result'
+  | 'missing_data';
+
+export interface ReflectionResult {
+  decision: 'done' | 'retry';
+  failureReason?: FailureReason;
+  feedback?: string;
+}

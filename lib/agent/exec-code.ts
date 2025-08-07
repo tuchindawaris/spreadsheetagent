@@ -14,6 +14,11 @@ export async function executeCode(
   console.log('=== EXECUTING CODE ===');
   console.log('Code to execute:', code);
   console.log('Available columns:', region.table.columns.map(c => c.name));
+  console.log('Data shape:', {
+    rows: region.table.rows.length,
+    columns: region.table.columns.length,
+    firstRowKeys: Object.keys(region.table.rows[0] || {})
+  });
   console.log('First 3 rows of data:', region.table.rows.slice(0, 3));
   console.log('===================');
   
@@ -24,17 +29,29 @@ export async function executeCode(
       result: null,
       console: {
         log: (...args: any[]) => {
-          sandbox.stdout += args.map(a => {
+          const logLine = args.map(a => {
             if (typeof a === 'object') {
               // For arrays, show a preview if it's long
-              if (Array.isArray(a) && a.length > 10) {
-                const preview = a.slice(0, 5);
-                return `[${preview.map(item => JSON.stringify(item)).join(', ')}, ... (${a.length} total items)]`;
+              if (Array.isArray(a)) {
+                if (a.length === 0) {
+                  return '[]';
+                } else if (a.length > 10) {
+                  const preview = a.slice(0, 5);
+                  const previewStr = preview.map(item => 
+                    typeof item === 'string' ? `"${item}"` : JSON.stringify(item)
+                  ).join(', ');
+                  return `[${previewStr}, ... (${a.length} total items)]`;
+                } else {
+                  return JSON.stringify(a);
+                }
               }
+              // For objects, pretty print
               return JSON.stringify(a, null, 2);
             }
             return String(a);
-          }).join(' ') + '\n';
+          }).join(' ');
+          
+          sandbox.stdout += logLine + '\n';
         }
       },
       stdout: '',
@@ -78,6 +95,17 @@ export async function executeCode(
         minBy: (arr: any[], key: string) => {
           return arr.reduce((min, item) => 
             (item[key] < min[key] ? item : min), arr[0] || null);
+        },
+        countBy: (arr: any[], key: string) => {
+          return arr.reduce((counts, item) => {
+            const val = item[key];
+            counts[val] = (counts[val] || 0) + 1;
+            return counts;
+          }, {});
+        },
+        flatten: (arr: any[]) => {
+          return arr.reduce((flat, item) => 
+            flat.concat(Array.isArray(item) ? item : [item]), []);
         }
       }
     };
@@ -98,12 +126,29 @@ export async function executeCode(
       );
     } catch (funcError) {
       // If the function itself throws, re-throw with clearer message
-      throw new Error(`Code execution failed: ${funcError instanceof Error ? funcError.message : 'Unknown error'}`);
+      const errorMsg = funcError instanceof Error ? funcError.message : 'Unknown error';
+      console.error('Function execution error:', errorMsg);
+      
+      // Try to extract useful info from error
+      if (errorMsg.includes('Cannot read properties of undefined')) {
+        const match = errorMsg.match(/reading '([^']+)'/);
+        if (match) {
+          throw new Error(`Code tried to access property '${match[1]}' on undefined value - check if column exists and has data`);
+        }
+      }
+      
+      throw new Error(`Code execution failed: ${errorMsg}`);
     }
     
     console.log('=== EXECUTION RESULT ===');
-    console.log('Stdout:', sandbox.stdout);
-    console.log('Result:', executionResult);
+    console.log('Stdout:', sandbox.stdout || '(no console output)');
+    console.log('Result type:', Array.isArray(executionResult) ? 'array' : typeof executionResult);
+    if (Array.isArray(executionResult)) {
+      console.log('Result length:', executionResult.length);
+      console.log('First few items:', executionResult.slice(0, 3));
+    } else {
+      console.log('Result:', executionResult);
+    }
     console.log('===================');
     
     return {

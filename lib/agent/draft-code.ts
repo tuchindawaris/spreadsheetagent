@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { Frame, AgentContext } from '../types';
+import { Frame, AgentContext, RetryContext } from '../types';
 import { RegionSelection } from './select-region';
 
 const openai = new OpenAI({
@@ -9,7 +9,8 @@ const openai = new OpenAI({
 export async function draftCode(
   frame: Frame,
   region: RegionSelection,
-  context: AgentContext
+  context: AgentContext,
+  retryContext?: RetryContext
 ): Promise<string> {
   const { gptCallCount, maxGptCalls } = context;
   
@@ -17,7 +18,7 @@ export async function draftCode(
     throw new Error('Max GPT calls exceeded');
   }
   
-  const systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis using SheetJS/XLSX library. 
+  let systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis using SheetJS/XLSX library. 
 Given a user intent and data structure, write JavaScript code to analyze the data.
 
 Rules:
@@ -35,19 +36,70 @@ Rules:
 
 Available columns: ${region.table.columns.map((c: any) => c.name).join(', ')}
 Row count: ${region.table.rows.length}
-First row example: ${JSON.stringify(region.table.rows[0] || {})}
+First 3 rows example: ${JSON.stringify(region.table.rows.slice(0, 3) || {}, null, 2)}`;
 
-Example code pattern:
-// Process data
-const processed = data.map(row => row.someColumn);
-// Assign to result (no const/let/var)
-result = processed;`;
+  // Add retry context if available
+  if (retryContext && retryContext.previousAttempts.length > 0) {
+    systemPrompt += `\n\nIMPORTANT - PREVIOUS ATTEMPTS FAILED:`;
+    
+    retryContext.previousAttempts.forEach((attempt, idx) => {
+      systemPrompt += `\n\nAttempt ${idx + 1}:`;
+      systemPrompt += `\nCode: ${attempt.code}`;
+      if (attempt.error) {
+        systemPrompt += `\nError: ${attempt.error}`;
+      }
+      if (attempt.stdout) {
+        systemPrompt += `\nConsole output: ${attempt.stdout}`;
+      }
+      if (attempt.result !== undefined) {
+        systemPrompt += `\nResult: ${JSON.stringify(attempt.result).slice(0, 200)}`;
+      }
+    });
+    
+    systemPrompt += `\n\nFailure reason: ${retryContext.failureReason}`;
+    if (retryContext.gptFeedback) {
+      systemPrompt += `\nSpecific issue: ${retryContext.gptFeedback}`;
+    }
+    
+    // Add specific guidance based on failure reason
+    switch (retryContext.failureReason) {
+      case 'all_nulls':
+        systemPrompt += `\n\nThe previous code returned all null values. This usually means:
+- You're accessing a column that doesn't exist (check exact column names including case and spaces)
+- The column name has typos or incorrect format
+- You need to handle nested data structures differently
+Double-check the exact column names and access them correctly.`;
+        break;
+      case 'all_whitespace':
+        systemPrompt += `\n\nThe previous code returned all empty strings/whitespace. This means:
+- The column exists but contains empty values
+- You might need to trim() values or filter out empty ones
+- Consider looking at a different column that actually has data`;
+        break;
+      case 'wrong_column':
+      case 'irrelevant_result':
+        systemPrompt += `\n\nThe result doesn't match what the user asked for. Make sure to:
+- Focus on the specific data the user requested
+- Return the right type of result (array, summary, calculation, etc.)
+- Address the user's actual question, not just process random data`;
+        break;
+      case 'type_mismatch':
+        systemPrompt += `\n\nThe result type doesn't match expectations. Ensure you return the appropriate data structure.`;
+        break;
+    }
+    
+    systemPrompt += `\n\nGenerate NEW code that fixes these issues. Do NOT repeat the same mistakes.`;
+  }
+
+  const userPrompt = `Task: ${frame.intent}
+Summary: ${frame.summary}
+User's original question: ${context.prompt}`;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Task: ${frame.intent}\nSummary: ${frame.summary}` }
+      { role: 'user', content: userPrompt }
     ],
     tools: [{
       type: 'function',
@@ -76,6 +128,9 @@ result = processed;`;
   
   const args = JSON.parse(toolCall.function.arguments);
   console.log('=== GENERATED CODE ===');
+  if (retryContext) {
+    console.log(`Attempt #${retryContext.previousAttempts.length + 1} (Retry due to: ${retryContext.failureReason})`);
+  }
   console.log(args.code);
   console.log('=== END CODE ===');
   

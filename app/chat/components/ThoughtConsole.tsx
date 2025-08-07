@@ -9,20 +9,39 @@ interface Props {
   sessionId: string;
 }
 
+interface ThoughtEntry {
+  message: string;
+  timestamp: Date;
+  type: 'info' | 'error' | 'success' | 'console' | 'retry';
+}
+
 export default function ThoughtConsole({ sessionId }: Props) {
-  const [thoughts, setThoughts] = useState<string[]>([]);
+  const [thoughts, setThoughts] = useState<ThoughtEntry[]>([]);
   const { subscribe } = useEvents();
   const bottomRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     const unsubscribe = subscribe((event: AgentEvent) => {
       if (event.type === 'thought') {
-        setThoughts(prev => [...prev, event.message]);
+        // Determine thought type based on message content
+        let type: ThoughtEntry['type'] = 'info';
+        if (event.message.includes('❌') || event.message.includes('Error')) {
+          type = 'error';
+        } else if (event.message.includes('✅') || event.message.includes('✨')) {
+          type = 'success';
+        } else if (event.message.includes('📝 Console:')) {
+          type = 'console';
+        } else if (event.message.includes('🔄 Retry')) {
+          type = 'retry';
+        }
+        
+        setThoughts(prev => [...prev, {
+          message: event.message,
+          timestamp: new Date(),
+          type
+        }]);
       } else if (event.type === 'answer') {
-        // Clear thoughts after a delay when answer is received
-        setTimeout(() => {
-          setThoughts([]);
-        }, 2000);
+        // Don't clear thoughts immediately - keep them visible
       }
     });
     
@@ -32,6 +51,16 @@ export default function ThoughtConsole({ sessionId }: Props) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [thoughts]);
+  
+  const getMessageColor = (type: ThoughtEntry['type']) => {
+    switch (type) {
+      case 'error': return 'text-red-600';
+      case 'success': return 'text-green-600';
+      case 'console': return 'text-blue-600';
+      case 'retry': return 'text-yellow-600';
+      default: return 'text-gray-700';
+    }
+  };
   
   return (
     <div className="h-full flex flex-col p-4">
@@ -47,15 +76,28 @@ export default function ThoughtConsole({ sessionId }: Props) {
         ) : (
           <div className="space-y-1">
             {thoughts.map((thought, idx) => (
-              <div key={idx} className="text-gray-700">
-                <span className="text-gray-400">[{new Date().toLocaleTimeString()}]</span>{' '}
-                {thought}
+              <div key={idx} className={`${getMessageColor(thought.type)} break-words`}>
+                <span className="text-gray-400">
+                  [{thought.timestamp.toLocaleTimeString()}]
+                </span>{' '}
+                <span className={thought.type === 'console' ? 'ml-4' : ''}>
+                  {thought.message}
+                </span>
               </div>
             ))}
             <div ref={bottomRef} />
           </div>
         )}
       </div>
+      
+      {thoughts.length > 0 && (
+        <button
+          onClick={() => setThoughts([])}
+          className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+        >
+          Clear log
+        </button>
+      )}
     </div>
   );
 }
