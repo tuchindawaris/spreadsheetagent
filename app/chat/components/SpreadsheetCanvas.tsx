@@ -33,14 +33,11 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
         readOnly: true,
         stretchH: 'all',
         autoWrapRow: true,
-        height: 'auto',
-        maxRows: 100,
+        height: 200, // Fixed height for smaller display
+        maxRows: 20, // Limit visible rows
         rowHeaders: true,
         colHeaders: false,
         licenseKey: 'non-commercial-and-evaluation',
-        afterRender: () => {
-          console.log(`Handsontable rendered for ${table.name}`);
-        }
       });
       
       hotInstances.current[table.name] = hot;
@@ -57,32 +54,22 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
     // Handle highlighting
     if (!highlightRange) return;
     
-    console.log('Highlighting range:', highlightRange);
-    
     // Switch to the highlighted sheet first
     setActiveTab(highlightRange.sheetId);
     
     // Wait for tab switch to complete
     setTimeout(() => {
       const hot = hotInstances.current[highlightRange.sheetId];
-      if (!hot) {
-        console.error('No Handsontable instance for sheet:', highlightRange.sheetId);
-        return;
-      }
+      if (!hot) return;
       
       // Parse range (e.g., "A1:E10")
       const match = highlightRange.range.match(/([A-Z])(\d+):([A-Z])(\d+)/);
-      if (!match) {
-        console.error('Invalid range format:', highlightRange.range);
-        return;
-      }
+      if (!match) return;
       
       const startCol = match[1].charCodeAt(0) - 65;
       const startRow = parseInt(match[2]) - 1;
       const endCol = match[3].charCodeAt(0) - 65;
       const endRow = parseInt(match[4]) - 1;
-      
-      console.log('Highlighting cells:', { startRow, startCol, endRow, endCol });
       
       // Use Handsontable's selection API
       hot.selectCell(startRow, startCol, endRow, endCol);
@@ -110,12 +97,12 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
   }, [highlightRange]);
   
   return (
-    <div className="h-full flex flex-col">
-      <h2 className="text-lg font-semibold mb-4">Spreadsheet Data</h2>
+    <div className="h-full flex flex-col p-2">
+      <h2 className="text-sm font-semibold mb-1">Data Preview</h2>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-        <TabsList>
+        <TabsList className="h-8">
           {sheetModel.tables.map(table => (
-            <TabsTrigger key={table.name} value={table.name}>
+            <TabsTrigger key={table.name} value={table.name} className="text-xs">
               {table.name}
             </TabsTrigger>
           ))}
@@ -124,12 +111,11 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
           <TabsContent key={table.name} value={table.name} className="flex-1">
             <div 
               ref={el => containerRefs.current[table.name] = el}
-              className="h-full overflow-auto"
+              className="h-full"
             />
           </TabsContent>
         ))}
       </Tabs>
-
     </div>
   );
 }

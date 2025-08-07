@@ -6,7 +6,6 @@ import { SheetModel } from '@/lib/types';
 import SpreadsheetCanvas from './components/SpreadsheetCanvas';
 import ChatPanel from './components/ChatPanel';
 import ThoughtConsole from './components/ThoughtConsole';
-import ConnectionDebugger from './components/ConnectionDebugger';
 import { EventProvider } from './components/EventContext';
 
 export default function ChatPage() {
@@ -33,23 +32,27 @@ export default function ChatPage() {
   return (
     <EventProvider sessionId={sessionId}>
       <div className="h-screen flex flex-col">
-        <ConnectionDebugger sessionId={sessionId} />
+        {/* Top section with spreadsheet */}
+        <div className="h-64 border-b">
+          <SpreadsheetCanvas 
+            sheetModel={sheetModel} 
+            highlightRange={highlightRange}
+          />
+        </div>
+        
+        {/* Bottom section with chat and logs side by side */}
         <div className="flex-1 flex">
-          <div className="flex-1 p-4">
-            <SpreadsheetCanvas 
-              sheetModel={sheetModel} 
-              highlightRange={highlightRange}
-            />
-          </div>
-          <div className="w-96 border-l">
+          <div className="flex-1 border-r">
             <ChatPanel 
               sheetModel={sheetModel}
               onHighlight={setHighlightRange}
               sessionId={sessionId}
             />
           </div>
+          <div className="w-96">
+            <ThoughtConsole sessionId={sessionId} />
+          </div>
         </div>
-        <ThoughtConsole sessionId={sessionId} />
       </div>
     </EventProvider>
   );
