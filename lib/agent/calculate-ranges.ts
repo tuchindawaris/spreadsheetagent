@@ -1,6 +1,6 @@
 
 // lib/agent/calculate-ranges.ts - Simplified version
-import { DataAccessInfo, Sheet } from '../types';
+import { DataAccessInfo } from '../types';
 
 export interface HighlightRange {
   sheetId: string;

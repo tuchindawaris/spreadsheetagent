@@ -1,8 +1,87 @@
-export type SheetModel = { tables: Table[]; issues: string[] };
+// lib/types.ts - Fixed to match actual usage
+export interface Sheet {
+  name: string;
+  data: any[][];  // Raw 2D array of cell values
+  merges: Array<{
+    s: { r: number; c: number }; // start row/col
+    e: { r: number; c: number }; // end row/col
+  }>;
+  dimensions: {
+    rows: number;
+    cols: number;
+  };
+}
 
+export interface SheetModel {
+  sheets: Sheet[];
+}
+
+export interface Frame {
+  intent: string;
+  summary: string;
+  targetSheet?: string;
+  dataRange?: { 
+    startRow?: number; 
+    endRow?: number; 
+    startCol?: number; 
+    endCol?: number;
+  };
+}
+
+export type AgentEvent =
+  | { type: 'connected' }
+  | { type: 'highlight'; sheetId: string; range: string }
+  | { type: 'thought'; message: string }
+  | { type: 'answer'; content: AnswerPayload };
+
+export interface AnswerPayload {
+  markdown: string;
+  data?: any;
+  analysisContext?: {
+    accessedRange?: string;
+    intent: string;
+    operation?: string;
+  };
+}
+
+export interface AgentContext {
+  sessionId: string;
+  prompt: string;
+  sheetModel: SheetModel;
+  maxRetries: number;
+  maxGptCalls: number;
+  gptCallCount: number;
+}
+
+export interface RetryContext {
+  previousAttempts: {
+    code: string;
+    error?: string;
+    result?: any;
+    stdout: string;
+  }[];
+  failureReason: string;
+  gptFeedback?: string;
+}
+
+export interface DataAccessInfo {
+  accessedRows: Set<number>;
+  accessedColumns: Set<number>;
+  accessedCells: Array<{ row: number; col: number }>;
+}
+
+export interface ExecResult {
+  ok: boolean;
+  stdout: string;
+  result: any;
+  error?: string;
+  dataAccess?: DataAccessInfo;
+}
+
+// Legacy types kept for reference but not used
 export interface Table {
   name: string;
-  rows: any[];                // raw values; sufficient for MVP
+  rows: any[];
   columns: ColumnMeta[];
   hierarchy?: HierarchyMeta;
 }
@@ -16,80 +95,4 @@ export interface ColumnMeta {
 export interface HierarchyMeta {
   levels: string[];
   parentChild: Map<string, string[]>;
-}
-
-export interface Frame {
-  intent: string;
-  neededColumns: string[];
-  summary: string;
-  targetTables?: string[];  // New field for multi-table support
-}
-
-export type AgentEvent =
-  | { type: 'connected' }
-  | { type: 'highlight'; sheetId: string; range: string }
-  | { type: 'thought'; message: string }
-  | { type: 'answer'; content: AnswerPayload };
-
-export interface AnswerPayload {
-  markdown: string;
-  tableJson?: unknown;
-  vegaLiteSpec?: unknown;
-  analysisContext?: {
-    accessedColumns: string[];
-    intent: string;
-    operation?: string; // e.g., "groupBy", "sum", "count", etc.
-  };
-}
-
-export interface AgentContext {
-  sessionId: string;
-  prompt: string;
-  sheetModel: SheetModel;
-  maxRetries: number;
-  maxGptCalls: number;
-  gptCallCount: number;
-}
-
-// New types for smart retry logic
-export interface RetryContext {
-  previousAttempts: {
-    code: string;
-    error?: string;
-    result?: any;
-    stdout: string;
-  }[];
-  failureReason: string; // "all_nulls", "all_whitespace", "wrong_column", "type_mismatch", etc.
-  gptFeedback?: string; // Why GPT thought it failed
-}
-
-export type FailureReason = 
-  | 'execution_error'
-  | 'all_nulls'
-  | 'all_whitespace'
-  | 'empty_result'
-  | 'type_mismatch'
-  | 'no_variance'
-  | 'irrelevant_result'
-  | 'missing_data';
-
-export interface ReflectionResult {
-  decision: 'done' | 'retry';
-  failureReason?: FailureReason;
-  feedback?: string;
-}
-
-// New types for data access tracking
-export interface DataAccessInfo {
-  accessedRows: Set<number>;
-  accessedColumns: Set<string>;
-  accessedCells: Array<{ row: number; column: string }>;
-}
-
-export interface ExecResultWithAccess {
-  ok: boolean;
-  stdout: string;
-  result: any;
-  error?: string;
-  dataAccess?: DataAccessInfo;
 }

@@ -1,4 +1,3 @@
-
 // lib/agent/exec-code.ts
 import { RegionSelection } from './select-region';
 import { DataAccessInfo, ExecResult } from '../types';
@@ -39,83 +38,193 @@ export async function executeCode(code: string, region: RegionSelection): Promis
       };
     }
     
-    const headers = firstRow.map((h, i) => h || `Col${i + 1}`);
+    // Clean headers - remove whitespace and handle empty headers
+    const headers = firstRow.map((h, i) => {
+      if (h === null || h === undefined || h === '') {
+        return `Col${i + 1}`;
+      }
+      // Convert to string and trim whitespace
+      return String(h).trim();
+    });
+    
+    console.log('Headers detected:', headers);
+    console.log('Raw first row (headers):', firstRow);
+    
+    // Log first few rows to debug data structure
+    console.log('First 3 raw data rows:');
+    for (let i = 0; i < Math.min(3, region.data.length); i++) {
+      console.log(`Row ${i}:`, region.data[i]);
+    }
+    
     const dataRows = region.data.slice(region.headerRows).map((row, rowIndex) => {
       const obj: any = {};
       if (Array.isArray(row)) {
         headers.forEach((header, colIndex) => {
+          // Store the value, preserving nulls
           obj[header] = row[colIndex];
-          // Track access when properties are accessed
-          if (row[colIndex] !== null && row[colIndex] !== undefined) {
-            dataAccess.accessedRows.add(rowIndex);
-            dataAccess.accessedColumns.add(colIndex);
-            dataAccess.accessedCells.push({ row: rowIndex, col: colIndex });
-          }
+          
+          // Track access
+          dataAccess.accessedRows.add(rowIndex + region.headerRows);
+          dataAccess.accessedColumns.add(colIndex);
+          dataAccess.accessedCells.push({ 
+            row: rowIndex + region.headerRows, 
+            col: colIndex 
+          });
         });
       }
       return obj;
     });
     
+    console.log('Sample data row:', dataRows[0]);
+    console.log('Sample values from first 5 rows:');
+    dataRows.slice(0, 5).forEach((row, i) => {
+      console.log(`Row ${i}:`, JSON.stringify(row).slice(0, 200));
+    });
+    
+    // Log column keys to debug
+    if (dataRows.length > 0) {
+      console.log('Available columns:', Object.keys(dataRows[0]));
+      console.log('First row values by column:');
+      Object.entries(dataRows[0]).forEach(([key, value]) => {
+        console.log(`  "${key}": ${typeof value} = ${JSON.stringify(value)}`);
+      });
+    }
+    
+    // Helper function to find column by partial match
+    const findColumn = (row: any, possibleNames: string[]) => {
+      const keys = Object.keys(row);
+      for (const name of possibleNames) {
+        // Try exact match first
+        if (row.hasOwnProperty(name)) return name;
+        // Try case-insensitive match
+        const found = keys.find(k => k.toLowerCase() === name.toLowerCase());
+        if (found) return found;
+        // Try partial match
+        const partial = keys.find(k => k.toLowerCase().includes(name.toLowerCase()));
+        if (partial) return partial;
+      }
+      return null;
+    };
+    
     // Create execution context
-    const sandbox = {
-      data: dataRows,
-      rawData: region.data, // Also provide raw 2D array
-      headers,
-      result: null,
-      console: {
-        log: (...args: any[]) => {
-          sandbox.stdout += args.map(a => 
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join(' ') + '\n';
-        }
+    let stdout = '';
+    
+    // Create lodash-like utilities in local scope
+    const lodashUtils = {
+      groupBy: (arr: any[], key: string) => {
+        return arr.reduce((groups, item) => {
+          const group = item[key];
+          if (!groups[group]) groups[group] = [];
+          groups[group].push(item);
+          return groups;
+        }, {});
       },
-      stdout: '',
-      // Basic lodash-like utilities
-      _: {
-        groupBy: (arr: any[], key: string) => {
-          return arr.reduce((groups, item) => {
-            const group = item[key];
-            if (!groups[group]) groups[group] = [];
-            groups[group].push(item);
-            return groups;
-          }, {});
-        },
-        sumBy: (arr: any[], key: string) => {
-          return arr.reduce((sum, item) => sum + (Number(item[key]) || 0), 0);
-        },
-        sortBy: (arr: any[], key: string) => {
-          return [...arr].sort((a, b) => {
-            if (a[key] < b[key]) return -1;
-            if (a[key] > b[key]) return 1;
-            return 0;
-          });
+      sumBy: (arr: any[], key: string) => {
+        return arr.reduce((sum, item) => {
+          const val = item[key];
+          // Handle various number formats
+          if (val === null || val === undefined) return sum;
+          if (typeof val === 'number') return sum + val;
+          if (typeof val === 'string') {
+            // Handle empty strings
+            const trimmed = val.trim();
+            if (trimmed === '') return sum;
+            // Remove currency symbols, commas, and spaces
+            const cleaned = trimmed.replace(/[฿$,\s]/g, '');
+            const num = parseFloat(cleaned);
+            if (!isNaN(num)) {
+              return sum + num;
+            }
+          }
+          return sum;
+        }, 0);
+      },
+      sortBy: (arr: any[], key: string) => {
+        return [...arr].sort((a, b) => {
+          const aVal = a[key];
+          const bVal = b[key];
+          if (aVal < bVal) return -1;
+          if (aVal > bVal) return 1;
+          return 0;
+        });
+      },
+      uniqBy: (arr: any[], key: string) => {
+        const seen = new Set();
+        return arr.filter(item => {
+          const val = item[key];
+          if (seen.has(val)) return false;
+          seen.add(val);
+          return true;
+        });
+      },
+      countBy: (arr: any[], key: string) => {
+        return arr.reduce((counts, item) => {
+          const val = item[key];
+          counts[val] = (counts[val] || 0) + 1;
+          return counts;
+        }, {});
+      },
+      mapValues: (obj: any, fn: (value: any, key: string) => any) => {
+        const result: any = {};
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key)) {
+            result[key] = fn(obj[key], key);
+          }
         }
+        return result;
+      },
+      sum: (arr: number[]) => {
+        return arr.reduce((total, num) => total + num, 0);
+      },
+      map: (arr: any[], fn: (item: any, index: number) => any) => {
+        return arr.map(fn);
+      },
+      filter: (arr: any[], fn: (item: any, index: number) => boolean) => {
+        return arr.filter(fn);
       }
     };
     
-    // Execute the code
+    // Create a console object for logging
+    const consoleObj = {
+      log: (...args: any[]) => {
+        stdout += args.map(a => 
+          typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+        ).join(' ') + '\n';
+      }
+    };
+    
+    // Create the execution function with proper scoping
+    // Don't pass 'result' as parameter since we want it to be assignable
     const execFunc = new Function(
-      'data', 'rawData', 'headers', 'console', 'result', '_',
-      code + '\nreturn result;'
+      'data', 'rawData', 'headers', 'console', '_', 'findColumn',
+      `
+      // User code
+      ${code}
+      
+      // Return the result
+      return typeof result !== 'undefined' ? result : null;
+      `
     );
     
+    // Execute the code
     const executionResult = execFunc(
-      sandbox.data,
-      sandbox.rawData,
-      sandbox.headers,
-      sandbox.console,
-      sandbox.result,
-      sandbox._
+      dataRows,
+      region.data,
+      headers,
+      consoleObj,
+      lodashUtils,
+      findColumn
     );
     
     console.log('=== EXECUTION RESULT ===');
-    console.log('Result:', executionResult);
-    console.log('Stdout:', sandbox.stdout);
+    console.log('Result type:', typeof executionResult);
+    console.log('Result preview:', JSON.stringify(executionResult).slice(0, 200));
+    console.log('Stdout:', stdout);
     
     return {
       ok: true,
-      stdout: sandbox.stdout || 'Code executed successfully',
-      result: executionResult || sandbox.result,
+      stdout: stdout || 'Code executed successfully',
+      result: executionResult,
       dataAccess
     };
   } catch (error) {

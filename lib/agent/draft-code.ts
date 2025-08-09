@@ -35,7 +35,7 @@ export async function draftCode(
   const firstRow = region.data[0];
   const columnCount = firstRow ? firstRow.length : 0;
   
-  let systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis.
+   let systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis.
 Given a user intent and raw spreadsheet data, write JavaScript code to analyze the data.
 
 Data Structure:
@@ -43,20 +43,36 @@ Data Structure:
 - 'data': Array of objects where first ${region.headerRows} row(s) are used as headers
 - 'headers': Array of column headers extracted from the first row
 
-Rules:
+Available utilities:
+- '_' object with lodash-like functions: groupBy, sumBy, sortBy, uniqBy, countBy, mapValues, sum, map, filter
+- 'findColumn(row, possibleNames)': Helper to find column by name (handles case/whitespace variations)
+  Example: const amountCol = findColumn(data[0], ['amount', 'total', 'value', 'sum']);
+
+CRITICAL DEBUGGING STEPS:
+1. ALWAYS start by logging the available columns: console.log('Available columns:', Object.keys(data[0]));
+2. When looking for amount/total columns, use findColumn and log the result
+3. If a column is not found, log all column names to help debug
+
+IMPORTANT Rules:
+- Column headers may have extra whitespace - use findColumn() or trim()
+- Numeric values might be strings with commas (e.g., "1,234.56") - parse them properly
 - The data is available as 'data' (array of objects) and 'rawData' (2D array)
-- Use JavaScript array methods for data manipulation
-- Use lodash functions when helpful (available as '_')
-- Return results that can be serialized to JSON
-- Store the final result by assigning to 'result' (do NOT declare it)
-- Use console.log for insights
-- Keep code concise and efficient
+- Use console.log liberally to debug data structure
+- Store the final result by assigning to 'result' (do NOT declare it with let/const)
+- When summing amounts, verify the column exists before using it
+
+Example debugging pattern:
+console.log('Available columns:', Object.keys(data[0]));
+const amountCol = findColumn(data[0], ['amount', 'total', 'payment', 'value']);
+console.log('Found amount column:', amountCol);
+if (!amountCol) {
+  console.log('Could not find amount column. Available columns:', headers);
+}
 
 Data preview:
 ${preview}
 
 Headers detected: ${firstRow ? firstRow.slice(0, 10).join(', ') + (firstRow.length > 10 ? ', ...' : '') : '[No headers found]'}`;
-
 
   // Add retry context if available
   if (retryContext && retryContext.previousAttempts.length > 0) {
