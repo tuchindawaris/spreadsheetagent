@@ -1,64 +1,65 @@
+
+// lib/agent/select-region.ts
 import { Frame, SheetModel } from '../types';
 
 export interface RegionSelection {
   sheetId: string;
   range: string;
-  table: any;
+  data: any[][];
+  headerRows: number;
 }
 
-export function selectRegion(
-  frame: Frame,
-  sheetModel: SheetModel
-): RegionSelection {
-  // If targetTables are specified in the frame, prefer those
-  if (frame.targetTables && frame.targetTables.length > 0) {
-    // Find the first target table that exists
-    for (const targetTableName of frame.targetTables) {
-      const table = sheetModel.tables.find(t => t.name === targetTableName);
-      if (table) {
-        // Calculate range
-        const endCol = String.fromCharCode(65 + table.columns.length - 1);
-        const endRow = table.rows.length + 1; // +1 for header
-        const range = `A1:${endCol}${endRow}`;
-        
-        return {
-          sheetId: table.name,
-          range,
-          table
-        };
-      }
-    }
+export function selectRegion(frame: Frame, sheetModel: SheetModel): RegionSelection {
+  // Find the target sheet
+  const sheet = sheetModel.sheets.find(s => s.name === frame.targetSheet) || sheetModel.sheets[0];
+  
+  if (!sheet || !sheet.data || sheet.data.length === 0) {
+    throw new Error('No valid data found in the selected sheet');
   }
   
-  // Fallback: find first table containing all needed columns
-  for (const table of sheetModel.tables) {
-    const columnNames = table.columns.map(c => c.name.toLowerCase());
-    const hasAllColumns = frame.neededColumns.every(needed =>
-      columnNames.some(col => col.includes(needed.toLowerCase()))
-    );
+  // Use the full sheet data by default
+  let data = sheet.data;
+  let startRow = 0;
+  let endRow = sheet.dimensions.rows - 1;
+  let startCol = 0;
+  let endCol = sheet.dimensions.cols - 1;
+  
+  // If a specific range was suggested, extract it
+  if (frame.dataRange) {
+    const range = frame.dataRange;
+    startRow = range.startRow || 0;
+    endRow = Math.min(range.endRow || endRow, sheet.data.length - 1);
+    startCol = range.startCol || 0;
+    endCol = Math.min(range.endCol || endCol, (sheet.data[0]?.length || 1) - 1);
     
-    if (hasAllColumns || frame.neededColumns.length === 0) {
-      // Calculate range (e.g., "A1:E10")
-      const endCol = String.fromCharCode(65 + table.columns.length - 1);
-      const endRow = table.rows.length + 1; // +1 for header
-      const range = `A1:${endCol}${endRow}`;
-      
-      return {
-        sheetId: table.name,
-        range,
-        table
-      };
+    // Extract the subset of data
+    data = [];
+    for (let r = startRow; r <= endRow; r++) {
+      const row = [];
+      for (let c = startCol; c <= endCol; c++) {
+        row.push(sheet.data[r]?.[c] ?? null);
+      }
+      data.push(row);
     }
   }
   
-  // Last resort: return first table
-  const firstTable = sheetModel.tables[0];
-  const endCol = String.fromCharCode(65 + firstTable.columns.length - 1);
-  const endRow = firstTable.rows.length + 1;
+  // Convert to Excel-style range notation
+  const colToLetter = (col: number) => {
+    let letter = '';
+    let temp = col;
+    while (temp >= 0) {
+      letter = String.fromCharCode(65 + (temp % 26)) + letter;
+      temp = Math.floor(temp / 26) - 1;
+    }
+    return letter;
+  };
+  
+  const range = `${colToLetter(startCol)}${startRow + 1}:${colToLetter(endCol)}${endRow + 1}`;
   
   return {
-    sheetId: firstTable.name,
-    range: `A1:${endCol}${endRow}`,
-    table: firstTable
+    sheetId: sheet.name,
+    range,
+    data,
+    headerRows: 1 // Default assumption, could be smarter
   };
 }
