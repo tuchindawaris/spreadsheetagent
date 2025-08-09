@@ -1,3 +1,4 @@
+// app/api/agent/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { runAgentPipeline } from '@/lib/agent/orchestrator';
 import { AgentContext } from '@/lib/types';
@@ -9,11 +10,13 @@ export async function POST(request: NextRequest) {
     console.log('=== AGENT API REQUEST ===');
     console.log('Prompt:', body.prompt);
     console.log('Session ID:', body.sessionId);
-    console.log('Sheet Model Tables:', body.sheetModel?.tables?.map((t: any) => ({
-      name: t.name,
-      columns: t.columns.map((c: any) => c.name),
-      rowCount: t.rows.length
-    })));
+    console.log('Sheet Model:', {
+      sheets: body.sheetModel?.sheets?.length || 0,
+      sheetNames: body.sheetModel?.sheets?.map((s: any) => ({
+        name: s.name,
+        dimensions: s.dimensions
+      }))
+    });
     console.log('===================');
     
     const { prompt, sheetModel, sessionId } = body;
@@ -21,6 +24,13 @@ export async function POST(request: NextRequest) {
     if (!prompt || !sheetModel || !sessionId) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+    
+    if (!sheetModel.sheets || sheetModel.sheets.length === 0) {
+      return NextResponse.json(
+        { error: 'No sheets found in model' },
         { status: 400 }
       );
     }
@@ -55,7 +65,8 @@ export async function POST(request: NextRequest) {
         eventBus.publish(sessionId, {
           type: 'answer',
           content: {
-            markdown: `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`
+            markdown: `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`,
+            data: null
           }
         });
       }

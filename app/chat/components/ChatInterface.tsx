@@ -1,9 +1,9 @@
+// app/chat/components/ChatInterface.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
 import { SheetModel, AgentEvent, AnswerPayload } from '@/lib/types';
 import { Send, User, Bot, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,7 +19,8 @@ interface Props {
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  data?: AnswerPayload;
+  data?: any;
+  analysisContext?: any;
   timestamp: Date;
 }
 
@@ -40,7 +41,8 @@ export default function ChatInterface({ sheetModel, onHighlight, sessionId }: Pr
           setMessages(prev => [...prev, {
             role: 'assistant',
             content: event.content.markdown,
-            data: event.content,
+            data: event.content.data,
+            analysisContext: event.content.analysisContext,
             timestamp: new Date()
           }]);
           setLoading(false);
@@ -57,6 +59,12 @@ export default function ChatInterface({ sheetModel, onHighlight, sessionId }: Pr
   
   const handleSubmit = async () => {
     if (!input.trim() || loading || !connected) return;
+    
+    // Validate sheetModel before sending
+    if (!sheetModel || !sheetModel.sheets || sheetModel.sheets.length === 0) {
+      toast.error('No spreadsheet data available');
+      return;
+    }
     
     const prompt = input.trim();
     setInput('');
@@ -88,13 +96,11 @@ export default function ChatInterface({ sheetModel, onHighlight, sessionId }: Pr
   
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="p-4 border-b">
         <h2 className="text-lg font-semibold">Chat Assistant</h2>
         <p className="text-sm text-gray-600">Ask questions about your data</p>
       </div>
       
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-12">
@@ -127,8 +133,8 @@ export default function ChatInterface({ sheetModel, onHighlight, sessionId }: Pr
                 </div>
                 <div className="flex-1">
                   <div className="text-sm text-gray-600 mb-1">Assistant</div>
-                  {msg.data?.tableJson !== undefined ? (
-                    <DataDisplay data={msg.data.tableJson} analysisContext={msg.data.analysisContext} />
+                  {msg.data !== undefined ? (
+                    <DataDisplay data={msg.data} analysisContext={msg.analysisContext} />
                   ) : msg.content ? (
                     <div className="bg-gray-50 rounded-lg p-3 text-sm">
                       {msg.content}
@@ -158,7 +164,6 @@ export default function ChatInterface({ sheetModel, onHighlight, sessionId }: Pr
         <div ref={messagesEndRef} />
       </div>
       
-      {/* Input */}
       <div className="p-4 border-t">
         <div className="flex gap-2">
           <Textarea

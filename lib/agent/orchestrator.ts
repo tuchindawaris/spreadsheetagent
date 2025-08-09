@@ -1,3 +1,4 @@
+// lib/agent/orchestrator.ts
 import { AgentContext, RetryContext } from '../types';
 import { eventBus } from '../bus';
 import { frameTask } from './frame';
@@ -12,11 +13,7 @@ export async function runAgentPipeline(context: AgentContext) {
   const { sessionId } = context;
   console.log('Starting agent pipeline for session:', sessionId);
   
-  // Update max retries to 5
   context.maxRetries = 5;
-  
-  // Log subscriber count at start
-  console.log(`Pipeline starting with ${eventBus.getSubscriberCount(sessionId)} subscribers`);
   
   try {
     // Stage 1: Frame the task
@@ -38,7 +35,7 @@ export async function runAgentPipeline(context: AgentContext) {
     console.log('Stage 2: Selecting region...');
     eventBus.publish(sessionId, { 
       type: 'thought', 
-      message: `🔍 Looking for data in columns: ${frame.neededColumns.join(', ')}` 
+      message: `🔍 Analyzing sheet: ${frame.targetSheet || 'default'}` 
     });
     
     const region = selectRegion(frame, context.sheetModel);
@@ -46,7 +43,7 @@ export async function runAgentPipeline(context: AgentContext) {
     
     eventBus.publish(sessionId, { 
       type: 'thought', 
-      message: `📊 Found data in sheet "${region.sheetId}" with ${region.table.rows.length} rows` 
+      message: `📊 Working with ${region.data.length} rows of data` 
     });
     
     let retryCount = 0;
@@ -72,13 +69,6 @@ export async function runAgentPipeline(context: AgentContext) {
           type: 'thought', 
           message: `🔄 Retry ${retryCount}/${context.maxRetries}: ${retryContext.failureReason}` 
         });
-        
-        if (retryContext.gptFeedback) {
-          eventBus.publish(sessionId, { 
-            type: 'thought', 
-            message: `💡 Issue: ${retryContext.gptFeedback}` 
-          });
-        }
       }
       
       code = await draftCode(
@@ -98,15 +88,14 @@ export async function runAgentPipeline(context: AgentContext) {
       execResult = await executeCode(code, region);
       console.log('Execution result:', { ok: execResult.ok, error: execResult.error });
       
-      // Stage 5: Dynamic highlighting based on data access
-      if (execResult.dataAccess && execResult.dataAccess.accessedColumns.size > 0) {
+      // Stage 5: Dynamic highlighting
+      if (execResult.dataAccess && execResult.dataAccess.accessedCells.length > 0) {
         const highlightRanges = calculateHighlightRanges(
           execResult.dataAccess,
-          region.table,
           region.sheetId
         );
         
-        // Send highlight events for accessed data
+        // Send highlight events
         highlightRanges.forEach(highlight => {
           console.log(`Highlighting: ${highlight.description} - ${highlight.range}`);
           eventBus.publish(sessionId, { 
@@ -116,12 +105,11 @@ export async function runAgentPipeline(context: AgentContext) {
           });
         });
         
-        // Log what was accessed
-        const accessedCols = Array.from(execResult.dataAccess.accessedColumns);
-        const accessedRowCount = execResult.dataAccess.accessedRows.size;
+        const rowCount = execResult.dataAccess.accessedRows.size;
+        const colCount = execResult.dataAccess.accessedColumns.size;
         eventBus.publish(sessionId, { 
           type: 'thought', 
-          message: `🎯 Analyzed ${accessedRowCount} rows using columns: ${accessedCols.join(', ')}` 
+          message: `🎯 Analyzed ${rowCount} rows × ${colCount} columns` 
         });
       }
       
@@ -173,7 +161,6 @@ export async function runAgentPipeline(context: AgentContext) {
       retryContext.gptFeedback = reflection.feedback;
       
       retryCount++;
-      console.log(`Retry count: ${retryCount}/${context.maxRetries}`);
       
       if (retryCount >= context.maxRetries) {
         eventBus.publish(sessionId, { 
@@ -192,10 +179,9 @@ export async function runAgentPipeline(context: AgentContext) {
     });
     
     const answer = await respond(frame, execResult!, context);
-    console.log('Answer generated:', { hasMarkdown: !!answer.markdown, hasTable: !!answer.tableJson });
+    console.log('Answer generated');
     
     // Send final answer
-    console.log(`Publishing answer event (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'answer', 
       content: answer 
@@ -207,11 +193,9 @@ export async function runAgentPipeline(context: AgentContext) {
     });
     
     console.log('Agent pipeline completed successfully');
-    console.log(`Final subscriber count: ${eventBus.getSubscriberCount(sessionId)}`);
     
   } catch (error) {
     console.error('Agent pipeline error:', error);
-    console.log(`Publishing error events (subscribers: ${eventBus.getSubscriberCount(sessionId)})`);
     eventBus.publish(sessionId, { 
       type: 'thought', 
       message: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}` 
@@ -220,7 +204,8 @@ export async function runAgentPipeline(context: AgentContext) {
     eventBus.publish(sessionId, { 
       type: 'answer', 
       content: {
-        markdown: `I encountered an error while analyzing your data: ${error instanceof Error ? error.message : 'Unknown error'}`
+        markdown: `I encountered an error while analyzing your data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        data: null
       }
     });
   }

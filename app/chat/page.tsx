@@ -1,3 +1,4 @@
+// app/chat/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -23,11 +24,42 @@ export default function ChatPage() {
       return;
     }
     
-    setSheetModel(JSON.parse(stored));
+    try {
+      const parsed = JSON.parse(stored);
+      
+      // Validate the sheet model structure
+      if (!parsed || !parsed.sheets || !Array.isArray(parsed.sheets)) {
+        throw new Error('Invalid sheet model format');
+      }
+      
+      if (parsed.sheets.length === 0) {
+        throw new Error('No sheets found in model');
+      }
+      
+      // Validate each sheet has required properties
+      for (const sheet of parsed.sheets) {
+        if (!sheet.name || !sheet.data || !Array.isArray(sheet.data)) {
+          throw new Error(`Invalid sheet structure for sheet: ${sheet.name || 'unnamed'}`);
+        }
+      }
+      
+      setSheetModel(parsed);
+    } catch (error) {
+      console.error('Failed to load sheet model:', error);
+      sessionStorage.removeItem('sheetModel');
+      router.push('/upload');
+    }
   }, [router]);
   
   if (!sheetModel) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading spreadsheet...</p>
+        </div>
+      </div>
+    );
   }
   
   return (

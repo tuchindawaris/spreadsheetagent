@@ -1,3 +1,4 @@
+// app/upload/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -17,18 +18,70 @@ export default function UploadPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     
+    console.log('Selected file:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: new Date(file.lastModified).toISOString()
+    });
+    
+    // Check file size (limit to 10MB for safety)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File is too large (max 10MB)');
+      e.target.value = '';
+      return;
+    }
+    
     setLoading(true);
     
     try {
+      console.log('Parsing file:', file.name);
       const sheetModel = await parseSheetToModel(file);
+      
+      console.log('Parsed sheet model:', {
+        sheets: sheetModel.sheets.length,
+        sheetDetails: sheetModel.sheets.map(s => ({
+          name: s.name,
+          rows: s.dimensions?.rows || 0,
+          cols: s.dimensions?.cols || 0,
+          hasData: s.data && s.data.length > 0
+        })),
+        totalCells: sheetModel.sheets.reduce((sum, s) => 
+          sum + ((s.dimensions?.rows || 0) * (s.dimensions?.cols || 0)), 0
+        )
+      });
+      
+      if (sheetModel.sheets.length === 0) {
+        throw new Error('No valid sheets found in the file');
+      }
+      
+      // Clear any existing data first
+      sessionStorage.removeItem('sheetModel');
       
       // Store in session storage for MVP (no persistence)
       sessionStorage.setItem('sheetModel', JSON.stringify(sheetModel));
       
-      toast.success(`Loaded ${sheetModel.tables.length} sheet(s)`);
+      toast.success(`Loaded ${sheetModel.sheets.length} sheet(s)`);
       router.push('/chat');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to parse file');
+      console.error('File parsing error:', error);
+      
+      // Provide specific error messages
+      let errorMessage = 'Failed to parse file';
+      if (error instanceof Error) {
+        if (error.message.includes('20,000 cell limit')) {
+          errorMessage = 'File is too large (exceeds 20,000 cell limit)';
+        } else if (error.message.includes('No valid data')) {
+          errorMessage = 'No valid data found in the spreadsheet';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error(errorMessage);
+      
+      // Reset the file input
+      e.target.value = '';
     } finally {
       setLoading(false);
     }

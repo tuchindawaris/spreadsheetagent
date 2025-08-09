@@ -1,17 +1,23 @@
+// lib/agent/reflect.ts
 import OpenAI from 'openai';
-import { Frame, AgentContext, ReflectionResult, FailureReason, ExecResultWithAccess } from '../types';
+import { Frame, AgentContext, ExecResult } from '../types';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Helper to check if all values in array are null/undefined
+export interface ReflectionResult {
+  decision: 'done' | 'retry';
+  failureReason?: string;
+  feedback?: string;
+}
+
+// Helper functions for checking data quality
 function allNulls(arr: any[]): boolean {
   if (!Array.isArray(arr)) return false;
   return arr.every(item => item === null || item === undefined);
 }
 
-// Helper to check if all values are whitespace/empty strings
 function allWhitespace(arr: any[]): boolean {
   if (!Array.isArray(arr)) return false;
   return arr.every(item => {
@@ -20,7 +26,6 @@ function allWhitespace(arr: any[]): boolean {
   });
 }
 
-// Helper to check if result has no variance (all same value)
 function noVariance(arr: any[]): boolean {
   if (!Array.isArray(arr) || arr.length === 0) return false;
   const first = JSON.stringify(arr[0]);
@@ -29,7 +34,7 @@ function noVariance(arr: any[]): boolean {
 
 export async function reflect(
   frame: Frame,
-  execResult: ExecResultWithAccess,
+  execResult: ExecResult,
   context: AgentContext
 ): Promise<ReflectionResult> {
   const { gptCallCount, maxGptCalls } = context;
@@ -101,7 +106,7 @@ Given the user's intent and the execution result, determine if the result satisf
 
 Respond with a JSON object containing:
 - decision: "done" if the result answers the question, "retry" if it needs improvement
-- failureReason: if retry, one of: "irrelevant_result", "missing_data", "type_mismatch" 
+- failureReason: if retry, describe why (e.g., "irrelevant_result", "missing_data", "type_mismatch") 
 - feedback: if retry, explain specifically what's wrong and what should be fixed
 
 Be strict - if the result doesn't directly answer what the user asked for, request a retry.`;
@@ -130,7 +135,7 @@ Result Sample: ${JSON.stringify(execResult.result).slice(0, 1000)}`
   
   return {
     decision: evaluation.decision || 'done',
-    failureReason: evaluation.failureReason as FailureReason,
+    failureReason: evaluation.failureReason,
     feedback: evaluation.feedback
   };
 }
