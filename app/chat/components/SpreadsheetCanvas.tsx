@@ -62,29 +62,52 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
       const hot = hotInstances.current[highlightRange.sheetId];
       if (!hot) return;
       
-      // Parse range (e.g., "A1:E10")
-      const match = highlightRange.range.match(/([A-Z])(\d+):([A-Z])(\d+)/);
-      if (!match) return;
+      // Clear previous highlights
+      hot.selectCell(0, 0, 0, 0);
       
-      const startCol = match[1].charCodeAt(0) - 65;
-      const startRow = parseInt(match[2]) - 1;
-      const endCol = match[3].charCodeAt(0) - 65;
-      const endRow = parseInt(match[4]) - 1;
+      // Parse range (supports both "A1:E10" and "A:A" formats)
+      const fullColumnMatch = highlightRange.range.match(/^([A-Z])1:([A-Z])(\d+)$/);
+      const rangeMatch = highlightRange.range.match(/^([A-Z])(\d+):([A-Z])(\d+)$/);
+      
+      let startCol, startRow, endCol, endRow;
+      
+      if (fullColumnMatch) {
+        // Full column highlight (e.g., "A1:A100")
+        startCol = fullColumnMatch[1].charCodeAt(0) - 65;
+        startRow = 0; // Include header
+        endCol = fullColumnMatch[2].charCodeAt(0) - 65;
+        endRow = parseInt(fullColumnMatch[3]) - 1;
+      } else if (rangeMatch) {
+        // Specific range (e.g., "A2:C5")
+        startCol = rangeMatch[1].charCodeAt(0) - 65;
+        startRow = parseInt(rangeMatch[2]) - 1;
+        endCol = rangeMatch[3].charCodeAt(0) - 65;
+        endRow = parseInt(rangeMatch[4]) - 1;
+      } else {
+        return;
+      }
       
       // Use Handsontable's selection API
       hot.selectCell(startRow, startCol, endRow, endCol);
       
-      // Also add visual highlight with custom class
+      // Add visual highlight with custom class
       const selection = hot.getSelected();
       if (selection) {
-        for (let row = startRow; row <= endRow; row++) {
-          for (let col = startCol; col <= endCol; col++) {
+        // Clear all previous highlights first
+        const allCells = hot.getPlugin('comments').range;
+        const tds = hot.rootElement.querySelectorAll('td');
+        tds.forEach(td => td.classList.remove('highlight-cell', 'highlight-cell-strong'));
+        
+        // Add new highlights
+        for (let row = startRow; row <= endRow && row < hot.countRows(); row++) {
+          for (let col = startCol; col <= endCol && col < hot.countCols(); col++) {
             const td = hot.getCell(row, col);
             if (td) {
-              td.classList.add('highlight-cell');
+              td.classList.add('highlight-cell-strong');
               // Remove highlight after animation
               setTimeout(() => {
-                td.classList.remove('highlight-cell');
+                td.classList.remove('highlight-cell-strong');
+                td.classList.add('highlight-cell');
               }, 2000);
             }
           }
@@ -92,7 +115,7 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
       }
       
       // Scroll to the selection
-      hot.scrollViewportTo(startRow, startCol);
+      hot.scrollViewportTo(Math.max(0, startRow - 2), startCol);
     }, 100);
   }, [highlightRange]);
   

@@ -18,7 +18,7 @@ export async function draftCode(
     throw new Error('Max GPT calls exceeded');
   }
   
-  let systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis using SheetJS/XLSX library. 
+  let systemPrompt = `You are a JavaScript code generator for spreadsheet data analysis. 
 Given a user intent and data structure, write JavaScript code to analyze the data.
 
 Rules:

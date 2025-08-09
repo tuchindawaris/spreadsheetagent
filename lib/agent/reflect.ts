@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { Frame, AgentContext, ReflectionResult, FailureReason } from '../types';
-import { ExecResult } from './exec-code';
+import { Frame, AgentContext, ReflectionResult, FailureReason, ExecResultWithAccess } from '../types';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -30,7 +29,7 @@ function noVariance(arr: any[]): boolean {
 
 export async function reflect(
   frame: Frame,
-  execResult: ExecResult,
+  execResult: ExecResultWithAccess,
   context: AgentContext
 ): Promise<ReflectionResult> {
   const { gptCallCount, maxGptCalls } = context;

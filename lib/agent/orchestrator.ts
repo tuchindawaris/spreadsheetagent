@@ -6,6 +6,7 @@ import { draftCode } from './draft-code';
 import { executeCode } from './exec-code';
 import { reflect } from './reflect';
 import { respond } from './respond';
+import { calculateHighlightRanges } from './calculate-ranges';
 
 export async function runAgentPipeline(context: AgentContext) {
   const { sessionId } = context;
@@ -48,14 +49,6 @@ export async function runAgentPipeline(context: AgentContext) {
       message: `📊 Found data in sheet "${region.sheetId}" with ${region.table.rows.length} rows` 
     });
     
-    // Stage 3: Highlight cells
-    console.log('Stage 3: Highlighting cells...');
-    eventBus.publish(sessionId, { 
-      type: 'highlight', 
-      sheetId: region.sheetId, 
-      range: region.range 
-    });
-    
     let retryCount = 0;
     let execResult;
     let code;
@@ -66,8 +59,8 @@ export async function runAgentPipeline(context: AgentContext) {
     };
     
     do {
-      // Stage 4: Draft code
-      console.log(`Stage 4: Drafting code (attempt ${retryCount + 1})...`);
+      // Stage 3: Draft code
+      console.log(`Stage 3: Drafting code (attempt ${retryCount + 1})...`);
       
       if (retryCount === 0) {
         eventBus.publish(sessionId, { 
@@ -95,8 +88,8 @@ export async function runAgentPipeline(context: AgentContext) {
         retryCount > 0 ? retryContext : undefined
       );
       
-      // Stage 5: Execute
-      console.log('Stage 5: Executing code...');
+      // Stage 4: Execute
+      console.log('Stage 4: Executing code...');
       eventBus.publish(sessionId, { 
         type: 'thought', 
         message: '⚡ Running data analysis...' 
@@ -104,6 +97,33 @@ export async function runAgentPipeline(context: AgentContext) {
       
       execResult = await executeCode(code, region);
       console.log('Execution result:', { ok: execResult.ok, error: execResult.error });
+      
+      // Stage 5: Dynamic highlighting based on data access
+      if (execResult.dataAccess && execResult.dataAccess.accessedColumns.size > 0) {
+        const highlightRanges = calculateHighlightRanges(
+          execResult.dataAccess,
+          region.table,
+          region.sheetId
+        );
+        
+        // Send highlight events for accessed data
+        highlightRanges.forEach(highlight => {
+          console.log(`Highlighting: ${highlight.description} - ${highlight.range}`);
+          eventBus.publish(sessionId, { 
+            type: 'highlight', 
+            sheetId: highlight.sheetId, 
+            range: highlight.range 
+          });
+        });
+        
+        // Log what was accessed
+        const accessedCols = Array.from(execResult.dataAccess.accessedColumns);
+        const accessedRowCount = execResult.dataAccess.accessedRows.size;
+        eventBus.publish(sessionId, { 
+          type: 'thought', 
+          message: `🎯 Analyzed ${accessedRowCount} rows using columns: ${accessedCols.join(', ')}` 
+        });
+      }
       
       // Log execution details
       if (execResult.stdout) {

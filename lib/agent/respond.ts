@@ -1,29 +1,45 @@
-import OpenAI from 'openai';
-import { Frame, AgentContext, AnswerPayload } from '../types';
-import { ExecResult } from './exec-code';
+import { Frame, AgentContext, AnswerPayload, ExecResultWithAccess } from '../types';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+type ExecResult = ExecResultWithAccess;
 
 export async function respond(
   frame: Frame,
   execResult: ExecResult,
   context: AgentContext
 ): Promise<AnswerPayload> {
-  // Simply return the execution result without additional formatting
-  let tableJson = undefined;
+  // Extract accessed columns from execution result
+  const accessedColumns = execResult.dataAccess 
+    ? Array.from(execResult.dataAccess.accessedColumns)
+    : [];
   
-  // Check if result is table-like
-  if (Array.isArray(execResult.result) && execResult.result.length > 0) {
+  // Try to infer the operation type from the intent
+  let operation = 'analysis';
+  const intentLower = frame.intent.toLowerCase();
+  if (intentLower.includes('group') || intentLower.includes('by')) {
+    operation = 'groupBy';
+  } else if (intentLower.includes('count')) {
+    operation = 'count';
+  } else if (intentLower.includes('sum') || intentLower.includes('total')) {
+    operation = 'sum';
+  } else if (intentLower.includes('average') || intentLower.includes('mean')) {
+    operation = 'average';
+  } else if (intentLower.includes('list') || intentLower.includes('show')) {
+    operation = 'list';
+  }
+  
+  // Pass through any result type with context
+  let tableJson = undefined;
+  if (execResult.result !== null && execResult.result !== undefined) {
     tableJson = execResult.result;
-  } else if (execResult.result && typeof execResult.result === 'object') {
-    // If it's a single object, wrap it in an array
-    tableJson = [execResult.result];
   }
   
   return {
     markdown: '', // No markdown needed
-    tableJson
+    tableJson,
+    analysisContext: {
+      accessedColumns,
+      intent: frame.intent,
+      operation
+    }
   };
 }

@@ -93,11 +93,17 @@ export default function ChatPanel({ sheetModel, onHighlight, sessionId }: Props)
                   <div className="text-sm">{msg.content}</div>
                 </Card>
               </div>
-            ) : msg.data?.tableJson ? (
-              <div className="space-y-2">
-                <DataTable data={msg.data.tableJson} />
+            ) : (
+              <div className="mb-2">
+                {msg.data?.tableJson !== undefined ? (
+                  <DataTable data={msg.data.tableJson} analysisContext={msg.data.analysisContext} />
+                ) : msg.content ? (
+                  <Card className="max-w-[80%] p-3">
+                    <div className="text-sm">{msg.content}</div>
+                  </Card>
+                ) : null}
               </div>
-            ) : null}
+            )}
           </div>
         ))}
         {loading && (

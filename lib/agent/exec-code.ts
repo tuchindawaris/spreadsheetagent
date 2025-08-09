@@ -1,11 +1,7 @@
 import { RegionSelection } from './select-region';
+import { DataAccessInfo, ExecResultWithAccess } from '../types';
 
-export interface ExecResult {
-  ok: boolean;
-  stdout: string;
-  result: any;
-  error?: string;
-}
+export interface ExecResult extends ExecResultWithAccess {}
 
 export async function executeCode(
   code: string,
@@ -22,10 +18,32 @@ export async function executeCode(
   console.log('First 3 rows of data:', region.table.rows.slice(0, 3));
   console.log('===================');
   
+  // Initialize data access tracking
+  const dataAccess: DataAccessInfo = {
+    accessedRows: new Set(),
+    accessedColumns: new Set(),
+    accessedCells: []
+  };
+  
   try {
-    // Create execution context with data and utilities
+    // Create a proxy for each data row to track property access
+    const trackedData = region.table.rows.map((row, rowIndex) => {
+      return new Proxy(row, {
+        get(target, prop) {
+          // Track column access
+          if (typeof prop === 'string' && prop in target) {
+            dataAccess.accessedColumns.add(prop);
+            dataAccess.accessedRows.add(rowIndex);
+            dataAccess.accessedCells.push({ row: rowIndex, column: prop });
+          }
+          return target[prop];
+        }
+      });
+    });
+    
+    // Create execution context with tracked data
     const sandbox = {
-      data: region.table.rows,
+      data: trackedData,
       result: null,
       console: {
         log: (...args: any[]) => {
@@ -58,6 +76,10 @@ export async function executeCode(
       // Add lodash utilities
       _: {
         groupBy: (arr: any[], key: string) => {
+          // Track column access when using lodash
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return arr.reduce((groups, item) => {
             const group = item[key];
             if (!groups[group]) groups[group] = [];
@@ -66,9 +88,15 @@ export async function executeCode(
           }, {});
         },
         sumBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return arr.reduce((sum, item) => sum + (Number(item[key]) || 0), 0);
         },
         sortBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return [...arr].sort((a, b) => {
             if (a[key] < b[key]) return -1;
             if (a[key] > b[key]) return 1;
@@ -76,6 +104,9 @@ export async function executeCode(
           });
         },
         uniqBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           const seen = new Set();
           return arr.filter(item => {
             const val = item[key];
@@ -85,18 +116,30 @@ export async function executeCode(
           });
         },
         meanBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           const sum = arr.reduce((s, item) => s + (Number(item[key]) || 0), 0);
           return arr.length > 0 ? sum / arr.length : 0;
         },
         maxBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return arr.reduce((max, item) => 
             (item[key] > max[key] ? item : max), arr[0] || null);
         },
         minBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return arr.reduce((min, item) => 
             (item[key] < min[key] ? item : min), arr[0] || null);
         },
         countBy: (arr: any[], key: string) => {
+          if (arr === trackedData && key) {
+            dataAccess.accessedColumns.add(key);
+          }
           return arr.reduce((counts, item) => {
             const val = item[key];
             counts[val] = (counts[val] || 0) + 1;
@@ -149,12 +192,17 @@ export async function executeCode(
     } else {
       console.log('Result:', executionResult);
     }
+    console.log('=== DATA ACCESS INFO ===');
+    console.log('Accessed columns:', Array.from(dataAccess.accessedColumns));
+    console.log('Accessed rows:', dataAccess.accessedRows.size, 'rows');
+    console.log('Total cell accesses:', dataAccess.accessedCells.length);
     console.log('===================');
     
     return {
       ok: true,
       stdout: sandbox.stdout || 'Code executed successfully',
-      result: executionResult !== null ? executionResult : sandbox.result
+      result: executionResult !== null ? executionResult : sandbox.result,
+      dataAccess
     };
   } catch (error) {
     console.error('=== EXECUTION ERROR ===');
@@ -166,7 +214,8 @@ export async function executeCode(
       ok: false,
       stdout: '',
       result: null,
-      error: error instanceof Error ? error.message : 'Execution failed'
+      error: error instanceof Error ? error.message : 'Execution failed',
+      dataAccess
     };
   }
 }

@@ -39,13 +39,28 @@
 /* Handsontable highlight animation */
 .highlight-cell {
   background-color: #fef3c7 !important;
+  opacity: 0.3;
+}
+
+.highlight-cell-strong {
+  background-color: #f59e0b !important;
+  opacity: 0.6;
   animation: highlightPulse 2s ease-in-out;
 }
 
 @keyframes highlightPulse {
-  0% { background-color: #fef3c7; }
-  50% { background-color: #fde68a; }
-  100% { background-color: #fef3c7; }
+  0% { 
+    background-color: #f59e0b;
+    opacity: 0.8;
+  }
+  50% { 
+    background-color: #fbbf24;
+    opacity: 0.6;
+  }
+  100% { 
+    background-color: #fef3c7;
+    opacity: 0.3;
+  }
 }
 
 /* Custom scrollbar for log */

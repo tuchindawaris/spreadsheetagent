@@ -34,6 +34,11 @@ export interface AnswerPayload {
   markdown: string;
   tableJson?: unknown;
   vegaLiteSpec?: unknown;
+  analysisContext?: {
+    accessedColumns: string[];
+    intent: string;
+    operation?: string; // e.g., "groupBy", "sum", "count", etc.
+  };
 }
 
 export interface AgentContext {
@@ -71,4 +76,19 @@ export interface ReflectionResult {
   decision: 'done' | 'retry';
   failureReason?: FailureReason;
   feedback?: string;
+}
+
+// New types for data access tracking
+export interface DataAccessInfo {
+  accessedRows: Set<number>;
+  accessedColumns: Set<string>;
+  accessedCells: Array<{ row: number; column: string }>;
+}
+
+export interface ExecResultWithAccess {
+  ok: boolean;
+  stdout: string;
+  result: any;
+  error?: string;
+  dataAccess?: DataAccessInfo;
 }
