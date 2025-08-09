@@ -16,8 +16,16 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
   const hotInstances = useRef<{ [key: string]: Handsontable | null }>({});
   const [activeTab, setActiveTab] = useState(sheetModel.tables[0]?.name || '');
   
+  // Group tables by their base sheet name
+  const groupedTables = sheetModel.tables.reduce((acc, table) => {
+    const baseName = table.name.split('_')[0];
+    if (!acc[baseName]) acc[baseName] = [];
+    acc[baseName].push(table);
+    return acc;
+  }, {} as Record<string, typeof sheetModel.tables>);
+  
   useEffect(() => {
-    // Initialize Handsontable for each sheet
+    // Initialize Handsontable for each table
     sheetModel.tables.forEach(table => {
       const container = containerRefs.current[table.name];
       if (!container || hotInstances.current[table.name]) return;
@@ -54,7 +62,7 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
     // Handle highlighting
     if (!highlightRange) return;
     
-    // Switch to the highlighted sheet first
+    // Switch to the highlighted table
     setActiveTab(highlightRange.sheetId);
     
     // Wait for tab switch to complete
@@ -94,7 +102,6 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
       const selection = hot.getSelected();
       if (selection) {
         // Clear all previous highlights first
-        const allCells = hot.getPlugin('comments').range;
         const tds = hot.rootElement.querySelectorAll('td');
         tds.forEach(td => td.classList.remove('highlight-cell', 'highlight-cell-strong'));
         
@@ -119,25 +126,66 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
     }, 100);
   }, [highlightRange]);
   
+  // Render grouped tables for better organization
+  const renderTableGroup = (baseName: string, tables: typeof sheetModel.tables) => {
+    if (tables.length === 1) {
+      // Single table - render normally
+      const table = tables[0];
+      return (
+        <TabsContent key={table.name} value={table.name} className="flex-1">
+          <div className="h-full">
+            <div 
+              ref={el => containerRefs.current[table.name] = el}
+              className="h-full"
+            />
+          </div>
+        </TabsContent>
+      );
+    }
+    
+    // Multiple tables from same sheet - show them stacked
+    return (
+      <TabsContent key={baseName} value={baseName} className="flex-1 overflow-y-auto">
+        <div className="space-y-4 p-2">
+          {tables.map((table, idx) => (
+            <div key={table.name}>
+              <h3 className="text-xs font-semibold mb-1 text-gray-600">
+                {table.name.replace(baseName + '_', '')}
+              </h3>
+              <div 
+                ref={el => containerRefs.current[table.name] = el}
+                className="border rounded"
+              />
+            </div>
+          ))}
+        </div>
+      </TabsContent>
+    );
+  };
+  
   return (
     <div className="h-full flex flex-col p-2">
       <h2 className="text-sm font-semibold mb-1">Data Preview</h2>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
         <TabsList className="h-8">
-          {sheetModel.tables.map(table => (
-            <TabsTrigger key={table.name} value={table.name} className="text-xs">
-              {table.name}
+          {Object.keys(groupedTables).map(baseName => (
+            <TabsTrigger 
+              key={baseName} 
+              value={
+                groupedTables[baseName].length === 1 
+                  ? groupedTables[baseName][0].name 
+                  : baseName
+              } 
+              className="text-xs"
+            >
+              {baseName}
+              {groupedTables[baseName].length > 1 && ` (${groupedTables[baseName].length})`}
             </TabsTrigger>
           ))}
         </TabsList>
-        {sheetModel.tables.map(table => (
-          <TabsContent key={table.name} value={table.name} className="flex-1">
-            <div 
-              ref={el => containerRefs.current[table.name] = el}
-              className="h-full"
-            />
-          </TabsContent>
-        ))}
+        {Object.entries(groupedTables).map(([baseName, tables]) => 
+          renderTableGroup(baseName, tables)
+        )}
       </Tabs>
     </div>
   );

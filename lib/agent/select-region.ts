@@ -10,7 +10,27 @@ export function selectRegion(
   frame: Frame,
   sheetModel: SheetModel
 ): RegionSelection {
-  // Heuristic: find first table containing all needed columns
+  // If targetTables are specified in the frame, prefer those
+  if (frame.targetTables && frame.targetTables.length > 0) {
+    // Find the first target table that exists
+    for (const targetTableName of frame.targetTables) {
+      const table = sheetModel.tables.find(t => t.name === targetTableName);
+      if (table) {
+        // Calculate range
+        const endCol = String.fromCharCode(65 + table.columns.length - 1);
+        const endRow = table.rows.length + 1; // +1 for header
+        const range = `A1:${endCol}${endRow}`;
+        
+        return {
+          sheetId: table.name,
+          range,
+          table
+        };
+      }
+    }
+  }
+  
+  // Fallback: find first table containing all needed columns
   for (const table of sheetModel.tables) {
     const columnNames = table.columns.map(c => c.name.toLowerCase());
     const hasAllColumns = frame.neededColumns.every(needed =>
@@ -31,7 +51,7 @@ export function selectRegion(
     }
   }
   
-  // Fallback: return first table
+  // Last resort: return first table
   const firstTable = sheetModel.tables[0];
   const endCol = String.fromCharCode(65 + firstTable.columns.length - 1);
   const endRow = firstTable.rows.length + 1;

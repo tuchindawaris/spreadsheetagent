@@ -22,6 +22,7 @@ export interface Frame {
   intent: string;
   neededColumns: string[];
   summary: string;
+  targetTables?: string[];  // New field for multi-table support
 }
 
 export type AgentEvent =
