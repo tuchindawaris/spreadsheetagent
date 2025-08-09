@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { SheetModel, Table } from '@/lib/types';
 import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileSpreadsheet, Table as TableIcon, ChevronRight, MoveHorizontal } from 'lucide-react';
 
 interface Props {
@@ -13,7 +12,6 @@ interface Props {
 
 export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props) {
   const [activeTable, setActiveTable] = useState(sheetModel.tables[0]?.name || '');
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [hasHorizontalScroll, setHasHorizontalScroll] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   
@@ -24,11 +22,6 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
     acc[baseName].push(table);
     return acc;
   }, {} as Record<string, Table[]>);
-  
-  // Auto-expand groups on mount
-  useEffect(() => {
-    setExpandedGroups(new Set(Object.keys(groupedTables)));
-  }, []);
   
   // Handle highlighting
   useEffect(() => {
@@ -50,36 +43,43 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
     setTimeout(checkScroll, 100);
   }, [activeTable]);
   
-  const toggleGroup = (groupName: string) => {
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(groupName)) {
-      newExpanded.delete(groupName);
-    } else {
-      newExpanded.add(groupName);
-    }
-    setExpandedGroups(newExpanded);
-  };
-  
   const renderTable = (table: Table) => {
     const isActive = table.name === activeTable;
     const hasHighlight = highlightRange?.sheetId === table.name;
     
     return (
       <div className={`transition-all ${isActive ? 'block' : 'hidden'}`}>
-        <div className="border rounded-lg overflow-hidden">
-          {/* Wrapper for both scrolls */}
-          <div ref={tableContainerRef} className="overflow-auto max-h-[500px]">
-            <table className="text-sm">
+        <div className="border rounded-lg overflow-hidden bg-white">
+          {/* Table header info */}
+          <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TableIcon className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">{table.name}</span>
+              <span className="text-xs text-gray-500">
+                ({table.columns.length} cols × {table.rows.length} rows)
+              </span>
+            </div>
+            {hasHorizontalScroll && (
+              <div className="text-xs text-gray-500 flex items-center gap-1 animate-pulse">
+                <MoveHorizontal className="h-3 w-3" />
+                <span>Scroll horizontally</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Table content */}
+          <div ref={tableContainerRef} className="overflow-x-auto overflow-y-auto max-h-[500px] relative">
+            <table className="text-sm min-w-full">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   {table.columns.map((col, idx) => (
                     <th 
                       key={idx} 
-                      className="px-4 py-2 text-left font-medium text-gray-700 border-b border-r last:border-r-0 whitespace-nowrap"
+                      className="px-4 py-2 text-left font-medium text-gray-700 border-b border-r last:border-r-0 whitespace-nowrap max-w-[200px]"
                     >
-                      <div className="flex items-center gap-2">
-                        <span>{col.name}</span>
-                        <span className="text-xs text-gray-400">
+                      <div className="flex items-center gap-2 max-w-[200px]">
+                        <span className="truncate">{col.name}</span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">
                           {col.type === 'number' && '#'}
                           {col.type === 'date' && '📅'}
                           {col.type === 'string' && 'Aa'}
@@ -95,7 +95,6 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
                   <tr key={rowIdx} className="hover:bg-gray-50 border-b">
                     {table.columns.map((col, colIdx) => {
                       const value = row[col.name];
-                      const cellId = `${rowIdx}-${colIdx}`;
                       const shouldHighlight = hasHighlight && isWithinRange(
                         highlightRange!.range,
                         rowIdx,
@@ -106,11 +105,11 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
                       return (
                         <td 
                           key={colIdx} 
-                          className={`px-4 py-2 border-r last:border-r-0 whitespace-nowrap ${
+                          className={`px-4 py-2 border-r last:border-r-0 whitespace-nowrap max-w-[200px] ${
                             shouldHighlight ? 'bg-yellow-200 animate-pulse' : ''
                           }`}
                         >
-                          <div className="max-w-xs overflow-hidden text-ellipsis">
+                          <div className="max-w-[200px] overflow-hidden text-ellipsis">
                             {formatCellValue(value, col.type)}
                           </div>
                         </td>
@@ -122,7 +121,7 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
             </table>
           </div>
           {table.rows.length > 100 && (
-            <div className="p-2 bg-gray-50 text-center text-sm text-gray-600 border-t sticky bottom-0">
+            <div className="p-2 bg-gray-50 text-center text-sm text-gray-600 border-t">
               Showing first 100 of {table.rows.length} rows
             </div>
           )}
@@ -132,100 +131,64 @@ export default function SpreadsheetViewer({ sheetModel, highlightRange }: Props)
   };
   
   return (
-    <Card className="shadow-lg">
-      <div className="flex h-[600px]">
-        {/* Left Sidebar - Table Navigation */}
-        <div className="w-64 border-r bg-gray-50 p-4 overflow-y-auto">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Data Tables</h3>
-          <div className="space-y-2">
-            {Object.entries(groupedTables).map(([baseName, tables]) => (
-              <div key={baseName}>
-                {tables.length === 1 ? (
-                  // Single table - simple button
-                  <button
-                    onClick={() => setActiveTable(tables[0].name)}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                      activeTable === tables[0].name
-                        ? 'bg-blue-100 text-blue-700 font-medium'
-                        : 'hover:bg-gray-100'
-                    }`}
-                  >
-                    <TableIcon className="h-4 w-4" />
-                    {baseName}
-                    <span className="ml-auto text-xs text-gray-500">
-                      {tables[0].rows.length} rows
-                    </span>
-                  </button>
-                ) : (
-                  // Multiple tables - expandable group
-                  <div>
-                    <button
-                      onClick={() => toggleGroup(baseName)}
-                      className="w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover:bg-gray-100"
-                    >
-                      <ChevronRight 
-                        className={`h-4 w-4 transition-transform ${
-                          expandedGroups.has(baseName) ? 'rotate-90' : ''
-                        }`}
-                      />
-                      <FileSpreadsheet className="h-4 w-4" />
-                      {baseName}
-                      <span className="ml-auto text-xs text-gray-500">
-                        {tables.length} tables
-                      </span>
-                    </button>
-                    {expandedGroups.has(baseName) && (
-                      <div className="ml-6 mt-1 space-y-1">
-                        {tables.map(table => {
-                          const displayName = table.name.replace(baseName + '_', '');
-                          return (
-                            <button
-                              key={table.name}
-                              onClick={() => setActiveTable(table.name)}
-                              className={`w-full text-left px-3 py-1.5 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                                activeTable === table.name
-                                  ? 'bg-blue-100 text-blue-700 font-medium'
-                                  : 'hover:bg-gray-100'
-                              }`}
-                            >
-                              <TableIcon className="h-3 w-3" />
-                              {displayName}
-                              <span className="ml-auto text-xs text-gray-500">
-                                {table.rows.length}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+    <Card className="shadow-lg h-full flex flex-col">
+      {/* Main content area */}
+      <div className="flex-1 p-6 overflow-hidden">
+        {sheetModel.tables.map(table => renderTable(table))}
+      </div>
+      
+      {/* Bottom tab navigation */}
+      <div className="border-t bg-gray-50 px-4 py-3">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          {Object.entries(groupedTables).map(([baseName, tables]) => {
+            if (tables.length === 1) {
+              const table = tables[0];
+              const isActive = activeTable === table.name;
+              return (
+                <button
+                  key={table.name}
+                  onClick={() => setActiveTable(table.name)}
+                  className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-colors flex items-center gap-2 ${
+                    isActive
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white border hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <TableIcon className="h-3 w-3" />
+                  {baseName}
+                  <span className={`text-xs ${isActive ? 'text-blue-100' : 'text-gray-500'}`}>
+                    ({table.rows.length})
+                  </span>
+                </button>
+              );
+            } else {
+              // For grouped tables, show a dropdown-style button
+              return (
+                <div key={baseName} className="relative inline-block">
+                  <div className="flex gap-1">
+                    {tables.map(table => {
+                      const isActive = activeTable === table.name;
+                      const displayName = table.name.replace(baseName + '_', '');
+                      return (
+                        <button
+                          key={table.name}
+                          onClick={() => setActiveTable(table.name)}
+                          className={`px-2 py-1.5 rounded-md text-xs whitespace-nowrap transition-colors ${
+                            isActive
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-white border hover:bg-gray-100 text-gray-700'
+                          }`}
+                          title={table.name}
+                        >
+                          {displayName}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* Right Content - Table Display */}
-        <div className="flex-1 p-6 overflow-hidden">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-800">
-                {activeTable}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {sheetModel.tables.find(t => t.name === activeTable)?.columns.length} columns,{' '}
-                {sheetModel.tables.find(t => t.name === activeTable)?.rows.length} rows
-              </p>
-            </div>
-            {hasHorizontalScroll && (
-              <div className="text-xs text-gray-500 flex items-center gap-1 animate-pulse">
-                <MoveHorizontal className="h-3 w-3" />
-                <span>Scroll to see all columns</span>
-              </div>
-            )}
-          </div>
-          
-          {sheetModel.tables.map(table => renderTable(table))}
+                </div>
+              );
+            }
+          })}
         </div>
       </div>
     </Card>
