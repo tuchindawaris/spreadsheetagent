@@ -8,14 +8,25 @@ interface TableBoundary {
   description?: string;
 }
 
+interface RowSample {
+  rowIndex: number;
+  data: any[];
+  hasMerge: boolean;
+  typeSignature?: string;
+  isEmptyRow?: boolean;
+  isWhitespaceRow?: boolean;
+  transitionScore?: number;
+}
+
 export async function POST(request: NextRequest) {
   console.log('Table detection API called');
   
   try {
     const body = await request.json();
-    const { samples, totalRows } = body;
+    const { samples, totalRows, includesTypeAnalysis } = body;
     
     console.log(`Received ${samples?.length || 0} samples for ${totalRows} total rows`);
+    console.log(`Type analysis included: ${includesTypeAnalysis}`);
     
     if (!samples || !Array.isArray(samples)) {
       return NextResponse.json(
@@ -40,27 +51,98 @@ export async function POST(request: NextRequest) {
       apiKey: process.env.OPENAI_API_KEY
     });
     
-    // Create prompt for LLM
+    // Create enhanced prompt for LLM
+    let samplesDescription = '';
+    
+    if (includesTypeAnalysis) {
+      // Enhanced format with type signatures
+      samplesDescription = samples.map((s: RowSample) => {
+        const rowData = s.data.map((cell: any) => {
+          if (cell === null || cell === undefined || cell === '') return '[empty]';
+          if (typeof cell === 'string' && cell.trim() === '') return '[whitespace]';
+          return String(cell).slice(0, 30) + (String(cell).length > 30 ? '...' : '');
+        }).join(' | ');
+        
+        let description = `Row ${s.rowIndex}`;
+        if (s.typeSignature) {
+          description += ` [Type: ${s.typeSignature}]`;
+        }
+        if (s.hasMerge) {
+          description += ' [MERGED]';
+        }
+        if (s.isEmptyRow) {
+          description += ' [ALL EMPTY]';
+        } else if (s.isWhitespaceRow) {
+          description += ' [WHITESPACE]';
+        }
+        if (s.transitionScore !== undefined) {
+          description += ` [Transition: ${s.transitionScore.toFixed(1)}]`;
+        }
+        description += `: ${rowData}`;
+        
+        return description;
+      }).join('\n');
+    } else {
+      // Legacy format
+      samplesDescription = samples.map((s: RowSample) => {
+        const rowData = s.data.map((cell: any) => {
+          if (cell === null || cell === undefined || cell === '') return '[empty]';
+          return String(cell).slice(0, 30) + (String(cell).length > 30 ? '...' : '');
+        }).join(' | ');
+        return `Row ${s.rowIndex}${s.hasMerge ? ' [MERGED]' : ''}: ${rowData}`;
+      }).join('\n');
+    }
+    
+    const typeSystemExplanation = includesTypeAnalysis ? `
+Type Signature Legend:
+- E = Empty cell (null, undefined, or empty string)
+- W = Whitespace only
+- T = Text (non-numeric string)
+- N = Number (including currency and percentages)
+- D = Date/Time
+- B = Boolean
+- F = Formula (cells starting with =)
+- M = Merged cell (not the master cell)
+- X = Unknown/Complex
+
+Transition scores (0-10) indicate how different consecutive rows are:
+- 0 = Identical pattern
+- 8-10 = Major change (likely table boundary)
+- Empty rows (all E) between different patterns strongly indicate boundaries
+
+IMPORTANT: Pay special attention to type pattern changes. When you see:
+1. A row of all text (TTTT) after rows with numbers (TNNN) = likely new header
+2. Empty rows (EEEE) between different patterns = table boundary
+3. Sudden pattern change (e.g., TNND to TTNE) = possible new table
+4. Whitespace rows between sections = intentional separation by user` : '';
+
     const prompt = `Analyze this spreadsheet data and identify separate tables. Each table should have its own consistent structure and headers.
 
-Data samples (showing row index, whether it has merged cells, and the row data):
-${samples.map((s: any) => {
-  const rowData = s.data.map((cell: any) => {
-    if (cell === null || cell === undefined || cell === '') return '[empty]';
-    return String(cell).slice(0, 30) + (String(cell).length > 30 ? '...' : '');
-  }).join(' | ');
-  return `Row ${s.rowIndex}${s.hasMerge ? ' [MERGED]' : ''}: ${rowData}`;
-}).join('\n')}
+${typeSystemExplanation}
+
+Data samples (showing row index, type signature, special markers, and row data):
+${samplesDescription}
 
 Total rows in sheet: ${totalRows}
 
-Rules:
-1. A new table starts when you see:
+Rules for detecting table boundaries:
+1. Look for DATA TYPE PATTERN CHANGES as primary indicator:
+   - Rows with all empty cells (type signature all E) often separate tables
+   - When numeric data rows (containing N) change to all text rows (all T), it often indicates new headers
+   - Significant type signature changes (high transition scores) suggest boundaries
+   
+2. Traditional indicators still apply:
    - Merged cells in the data area (not just headers)
-   - Multiple empty rows followed by new headers
+   - Multiple empty or whitespace-only rows
    - Completely different column structure or data theme
-2. Headers can span multiple rows (with or without merges)
-3. Each table should have clear boundaries
+
+3. Implicit table detection:
+   - Users often separate tables with just empty rows (no borders/formatting)
+   - A text row after numeric data rows likely starts a new table
+   - Consistent type patterns group rows into the same table
+
+4. Headers can span multiple rows (with or without merges)
+5. Each table should have clear boundaries based on data patterns
 
 Return a JSON object with a "boundaries" property containing an array:
 {
@@ -70,16 +152,18 @@ Return a JSON object with a "boundaries" property containing an array:
     "mergeHeader": "string if there's a merged cell header above this table",
     "description": "brief description of what this table contains"
   }]
-}`;
+}
 
-    console.log('Calling OpenAI API...');
+Focus on the TYPE PATTERNS to detect implicit table structures, not just visual formatting.`;
+
+    console.log('Calling OpenAI API with enhanced type analysis...');
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview', // More reliable than gpt-4o which might not be available
+      model: 'gpt-4-turbo-preview',
       messages: [
         { 
           role: 'system', 
-          content: 'You are a spreadsheet analysis expert. Identify logical table boundaries in spreadsheet data. Always return a valid JSON object with a boundaries array.'
+          content: 'You are a spreadsheet analysis expert specializing in detecting logical table boundaries using data type patterns. You understand that users often create implicit table structures using empty rows and type changes rather than explicit formatting. Always return a valid JSON object with a boundaries array.'
         },
         { role: 'user', content: prompt }
       ],
@@ -109,7 +193,13 @@ Return a JSON object with a "boundaries" property containing an array:
       throw new Error('Invalid response format from LLM');
     }
     
-    console.log(`Found ${boundaries.length} table boundaries`);
+    console.log(`Found ${boundaries.length} table boundaries using type analysis`);
+    
+    // Log boundary details
+    boundaries.forEach((b, idx) => {
+      console.log(`Boundary ${idx + 1}: rows ${b.startRow}-${b.endRow}`, 
+        b.description ? `(${b.description})` : '');
+    });
     
     // Validate and adjust boundaries
     const validBoundaries: TableBoundary[] = [];

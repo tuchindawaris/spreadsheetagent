@@ -170,3 +170,22 @@
 .slide-in-from-left {
   animation: slide-in-from-left 0.3s ease-out;
 }
+
+/* Sheet viewer specific styles */
+.sheet-tab-active {
+  @apply bg-blue-500 text-white shadow-md;
+}
+
+.sheet-tab-inactive {
+  @apply bg-white border hover:bg-gray-100 text-gray-700;
+}
+
+/* Ensure sheet tabs are always visible */
+.sheet-tabs-container {
+  @apply sticky bottom-0 bg-gray-50 border-t z-20;
+}
+
+/* Ensure proper height calculation for sheet content */
+.sheet-content-container {
+  height: calc(100% - 60px); /* Adjust based on tab height */
+}

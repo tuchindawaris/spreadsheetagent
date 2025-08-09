@@ -7,7 +7,6 @@ import SpreadsheetViewer from './components/SpreadsheetViewer';
 import ChatInterface from './components/ChatInterface';
 import ThoughtStream from './components/ThoughtStream';
 import { EventProvider } from './components/EventContext';
-import { Card } from '@/components/ui/card';
 
 export default function ChatPage() {
   const [sheetModel, setSheetModel] = useState<SheetModel | null>(null);
@@ -57,8 +56,8 @@ export default function ChatPage() {
           </div>
           
           {/* Center - Data Viewer */}
-          <div className="flex-1 p-8 overflow-auto">
-            <div className="max-w-6xl mx-auto">
+          <div className="flex-1 p-8 overflow-hidden">
+            <div className="h-full max-w-6xl mx-auto">
               <SpreadsheetViewer 
                 sheetModel={sheetModel} 
                 highlightRange={highlightRange}
