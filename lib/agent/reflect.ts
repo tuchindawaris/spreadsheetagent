@@ -107,7 +107,7 @@ Respond with a JSON object containing:
 Be strict - if the result doesn't directly answer what the user asked for, request a retry.`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: systemPrompt },
       { 
