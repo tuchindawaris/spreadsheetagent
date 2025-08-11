@@ -8,120 +8,114 @@ export function parseSheetToModel(file: File): Promise<SheetModel> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { 
-          type: 'array',
-          cellStyles: true,
-          cellNF: true,
-          cellDates: true
-        });
+        const workbook = XLSX.read(data, { type: 'array' });
         
         const tables: Table[] = [];
         const issues: string[] = [];
         
-        workbook.SheetNames.forEach(sheetName => {
+        // Process each sheet
+        for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
           
-          // Handle merged cells BEFORE converting to JSON
+          // Handle merged cells if they exist
           if (worksheet['!merges']) {
-            worksheet['!merges'].forEach(merge => {
-              // Get the value from the top-left cell of the merged range
-              const startCell = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
-              const masterValue = worksheet[startCell];
+            for (const merge of worksheet['!merges']) {
+              // Get the first cell in the merge range (top-left)
+              const firstCellAddr = XLSX.utils.encode_cell({ 
+                r: merge.s.r, 
+                c: merge.s.c 
+              });
+              const firstCell = worksheet[firstCellAddr];
               
-              // Fill all cells in the merged range with the master cell's value
-              for (let row = merge.s.r; row <= merge.e.r; row++) {
-                for (let col = merge.s.c; col <= merge.e.c; col++) {
-                  const cellAddr = XLSX.utils.encode_cell({ r: row, c: col });
-                  // Copy the entire cell object to preserve formatting, type, etc.
-                  if (masterValue) {
-                    worksheet[cellAddr] = { ...masterValue };
+              // If the first cell has a value, copy it to all cells in the merge range
+              if (firstCell) {
+                for (let row = merge.s.r; row <= merge.e.r; row++) {
+                  for (let col = merge.s.c; col <= merge.e.c; col++) {
+                    const addr = XLSX.utils.encode_cell({ r: row, c: col });
+                    worksheet[addr] = firstCell;
                   }
                 }
               }
-            });
-            
-            // Remove the merges array so sheet_to_json treats all cells as normal
+            }
+            // Remove merge info after processing
             delete worksheet['!merges'];
           }
           
-          // Now convert to JSON - all cells will have values
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-            header: 1,
-            raw: false, // Get formatted strings
-            defval: null // Use null for empty cells
-          });
+          // Get the range of the worksheet
+          const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
           
-          if (jsonData.length === 0) {
-            issues.push(`Sheet "${sheetName}" is empty`);
-            return;
-          }
-          
-          // Extract headers from first row
-          const headers = (jsonData[0] as any[])
-            .filter(h => h !== undefined && h !== null && h !== '')
-            .map(h => String(h).trim());
-            
-          if (headers.length === 0) {
-            issues.push(`Sheet "${sheetName}" has no headers`);
-            return;
-          }
-          
-          // Extract rows
-          const rows = jsonData.slice(1).map((row: any) => {
-            const obj: any = {};
-            headers.forEach((header, idx) => {
-              // Handle the value - could be string, number, date, etc.
-              let value = row[idx];
+          // Extract all data as array of arrays
+          const data: any[][] = [];
+          for (let row = range.s.r; row <= range.e.r; row++) {
+            const rowData: any[] = [];
+            for (let col = range.s.c; col <= range.e.c; col++) {
+              const cellAddr = XLSX.utils.encode_cell({ r: row, c: col });
+              const cell = worksheet[cellAddr];
               
-              // Convert Excel dates if needed
-              if (value && typeof value === 'number' && value > 40000 && value < 50000) {
-                // Likely an Excel date serial number
-                const date = XLSX.SSF.parse_date_code(value);
-                if (date) {
-                  value = new Date(date.y, date.m - 1, date.d);
-                }
+              if (cell) {
+                // Use the formatted value if available, otherwise raw value
+                rowData.push(cell.w || cell.v);
+              } else {
+                rowData.push('');
               }
-              
-              obj[header] = value;
-            });
-            return obj;
-          }).filter(row => {
-            // Keep rows that have at least one non-empty value
-            return Object.values(row).some(v => v !== undefined && v !== null && v !== '');
-          });
+            }
+            data.push(rowData);
+          }
           
-          // Analyze columns
-          const columns: ColumnMeta[] = headers.map(header => {
-            const values = rows.map(r => r[header]).filter(v => v !== undefined && v !== null && v !== '');
-            const types = new Set(values.map(v => {
-              if (v instanceof Date) return 'date';
-              if (typeof v === 'number') return 'number';
-              return 'string';
-            }));
+          if (data.length === 0) {
+            issues.push(`Sheet "${sheetName}" is empty`);
+            continue;
+          }
+          
+          // First row contains headers
+          const headers = data[0];
+          const columns: ColumnMeta[] = headers.map((header, idx) => ({
+            name: header || `Column${idx + 1}`,
+            type: 'string',
+            sample: null
+          }));
+          
+          // Convert remaining rows to objects
+          const rows: any[] = [];
+          for (let i = 1; i < data.length; i++) {
+            const row: any = {};
+            let hasData = false;
             
-            let type: 'string' | 'number' | 'date' | 'mixed' = 'string';
-            if (types.size === 1) {
-              const singleType = Array.from(types)[0];
-              type = singleType as any;
-            } else if (types.size > 1) {
-              type = 'mixed';
+            for (let j = 0; j < columns.length; j++) {
+              const value = i < data.length && j < data[i].length ? data[i][j] : '';
+              row[columns[j].name] = value;
+              if (value !== '') hasData = true;
             }
             
-            return {
-              name: header,
-              type,
-              sample: values[0] || null
-            };
-          });
+            // Include all rows, even if empty
+            rows.push(row);
+          }
+          
+          // Analyze column types from actual data
+          for (const col of columns) {
+            const values = rows
+              .map(row => row[col.name])
+              .filter(v => v !== '');
+            
+            if (values.length > 0) {
+              col.sample = values[0];
+              
+              // Simple type detection
+              const isAllNumbers = values.every(v => !isNaN(Number(v)));
+              if (isAllNumbers) {
+                col.type = 'number';
+              }
+            }
+          }
           
           tables.push({
             name: sheetName,
             rows,
             columns
           });
-        });
+        }
         
-        // Check for 20k cell limit
+        // Check total cell count
         const totalCells = tables.reduce((sum, table) => 
           sum + (table.rows.length * table.columns.length), 0
         );
@@ -132,8 +126,9 @@ export function parseSheetToModel(file: File): Promise<SheetModel> {
         }
         
         resolve({ tables, issues });
+        
       } catch (error) {
-        reject(error);
+        reject(new Error(`Failed to parse file: ${error}`));
       }
     };
     

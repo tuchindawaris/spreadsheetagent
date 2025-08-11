@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import Handsontable from 'handsontable';
 import 'handsontable/dist/handsontable.full.css';
 import { SheetModel } from '@/lib/types';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Props {
   sheetModel: SheetModel;
@@ -33,11 +32,12 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
         readOnly: true,
         stretchH: 'all',
         autoWrapRow: true,
-        height: 200, // Fixed height for smaller display
-        maxRows: 20, // Limit visible rows
+        height: 150, // Reduced height by ~50%
+        maxRows: 10, // Reduced visible rows
         rowHeaders: true,
         colHeaders: false,
         licenseKey: 'non-commercial-and-evaluation',
+        fontSize: 11, // Smaller font size
       });
       
       hotInstances.current[table.name] = hot;
@@ -94,7 +94,6 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
       const selection = hot.getSelected();
       if (selection) {
         // Clear all previous highlights first
-        const allCells = hot.getPlugin('comments').range;
         const tds = hot.rootElement.querySelectorAll('td');
         tds.forEach(td => td.classList.remove('highlight-cell', 'highlight-cell-strong'));
         
@@ -122,23 +121,41 @@ export default function SpreadsheetCanvas({ sheetModel, highlightRange }: Props)
   return (
     <div className="h-full flex flex-col p-2">
       <h2 className="text-sm font-semibold mb-1">Data Preview</h2>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-        <TabsList className="h-8">
+      
+      {/* Tab navigation */}
+      {sheetModel.tables.length > 1 && (
+        <div className="flex gap-0 mb-2 border-b">
           {sheetModel.tables.map(table => (
-            <TabsTrigger key={table.name} value={table.name} className="text-xs">
+            <button
+              key={table.name}
+              onClick={() => setActiveTab(table.name)}
+              className={`
+                px-3 py-1 text-xs font-medium border-b-2 transition-colors
+                ${activeTab === table.name 
+                  ? 'border-blue-500 text-blue-600 bg-blue-50' 
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+              `}
+            >
               {table.name}
-            </TabsTrigger>
+            </button>
           ))}
-        </TabsList>
+        </div>
+      )}
+      
+      {/* Sheet content */}
+      <div className="flex-1 relative">
         {sheetModel.tables.map(table => (
-          <TabsContent key={table.name} value={table.name} className="flex-1">
+          <div
+            key={table.name}
+            className={`absolute inset-0 ${activeTab === table.name ? 'block' : 'hidden'}`}
+          >
             <div 
               ref={el => containerRefs.current[table.name] = el}
               className="h-full"
             />
-          </TabsContent>
+          </div>
         ))}
-      </Tabs>
+      </div>
     </div>
   );
 }

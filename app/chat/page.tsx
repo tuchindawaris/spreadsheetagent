@@ -32,8 +32,8 @@ export default function ChatPage() {
   return (
     <EventProvider sessionId={sessionId}>
       <div className="h-screen flex flex-col">
-        {/* Top section with spreadsheet */}
-        <div className="h-64 border-b">
+        {/* Top section with spreadsheet - reduced height */}
+        <div className="h-48 border-b bg-gray-50">
           <SpreadsheetCanvas 
             sheetModel={sheetModel} 
             highlightRange={highlightRange}

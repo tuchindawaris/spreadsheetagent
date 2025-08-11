@@ -80,3 +80,32 @@
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Smaller font and compact display for Handsontable */
+.handsontable {
+  font-size: 11px !important;
+}
+
+.handsontable td {
+  padding: 1px 3px !important;
+  height: 18px !important;
+  line-height: 14px !important;
+  font-size: 11px !important;
+}
+
+.handsontable th {
+  padding: 2px 4px !important;
+  height: 20px !important;
+  line-height: 16px !important;
+  font-size: 11px !important;
+}
+
+.handsontable .ht_master .wtHolder {
+  overflow: auto !important;
+}
+
+/* Make row headers narrower */
+.handsontable .ht_clone_left th {
+  width: 30px !important;
+  min-width: 30px !important;
+}
